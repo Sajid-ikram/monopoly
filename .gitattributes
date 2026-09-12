@@ -1,0 +1,11 @@
+# Normalise line endings in the repository so Windows and Linux checkouts
+# (and the future server build) never produce whitespace-only diffs.
+* text=auto eol=lf
+
+# The Gradle wrapper script is executed by a shell; CRLF would break it.
+gradlew text eol=lf
+gradlew.bat text eol=crlf
+
+*.jar binary
+*.webp binary
+*.png binary

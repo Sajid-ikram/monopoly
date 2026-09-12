@@ -1,0 +1,16 @@
+*.iml
+.gradle/
+.kotlin/
+build/
+/captures
+.externalNativeBuild
+.cxx
+.DS_Store
+
+# Machine-specific: contains the local Android SDK path.
+local.properties
+
+# Keep shared IDE config (code style, inspections), drop per-user state.
+/.idea/*
+!/.idea/codeStyles/
+!/.idea/inspectionProfiles/
