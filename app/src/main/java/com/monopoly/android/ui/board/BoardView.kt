@@ -5,25 +5,27 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -33,12 +35,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.monopoly.android.ui.theme.BoardEdge
 import com.monopoly.android.ui.theme.BoardFace
+import com.monopoly.android.ui.theme.ChanceFace
+import com.monopoly.android.ui.theme.ChanceOrange
+import com.monopoly.android.ui.theme.ChestBlue
+import com.monopoly.android.ui.theme.ChestFace
+import com.monopoly.android.ui.theme.MonopolyRed
 import com.monopoly.android.ui.theme.SpaceFace
 import com.monopoly.android.ui.theme.displayColor
 import com.monopoly.android.ui.theme.seatColor
 import com.monopoly.core.board.ChanceSpace
 import com.monopoly.core.board.ClassicBoard
 import com.monopoly.core.board.CommunityChestSpace
+import com.monopoly.core.board.FreeParking
+import com.monopoly.core.board.Go
+import com.monopoly.core.board.GoToJail
+import com.monopoly.core.board.JailSpace
 import com.monopoly.core.board.Purchasable
 import com.monopoly.core.board.Railroad
 import com.monopoly.core.board.Space
@@ -48,14 +59,94 @@ import com.monopoly.core.board.Utility
 import com.monopoly.core.model.Deed
 import com.monopoly.core.model.GameState
 
-/** Where a space sits on the 11 x 11 grid, in (row, column) from the top left. */
-private fun gridPosition(index: Int): Pair<Int, Int> = when (index) {
-    // GO is the bottom-right corner and play runs anticlockwise from there.
-    in 0..10 -> 10 to (10 - index)
-    in 11..20 -> (20 - index) to 0
-    in 21..30 -> 0 to (index - 20)
-    else -> (index - 30) to 10
+/**
+ * Which edge of the board a space sits on, and how its face is turned.
+ *
+ * The two side edges are rotated a quarter turn, as on the printed board. The
+ * top edge is **not** turned upside down, though a real board does exactly that:
+ * you can pick up a board and turn it, and you cannot do that with a screen.
+ * Its colour band moves to the bottom of the square instead, which keeps the
+ * band facing the middle of the board while leaving the name the right way up.
+ */
+private enum class Edge(val rotation: Float, val bandAtTop: Boolean) {
+    BOTTOM(rotation = 0f, bandAtTop = true),
+    LEFT(rotation = 90f, bandAtTop = true),
+    TOP(rotation = 0f, bandAtTop = false),
+    RIGHT(rotation = 270f, bandAtTop = true),
 }
+
+/** Where a space sits, and how its face is turned. */
+private data class Geometry(
+    val x: Dp,
+    val y: Dp,
+    val width: Dp,
+    val height: Dp,
+    val edge: Edge,
+    val isCorner: Boolean,
+) {
+    /** Corners always read upright; only the runs between them are turned. */
+    val rotation: Float get() = if (isCorner) 0f else edge.rotation
+}
+
+/**
+ * Lays the forty spaces out around the edge.
+ *
+ * The side is made of two corners and the nine single-unit spaces between them;
+ * see [CORNER_UNITS] for how deep a corner is.
+ */
+private fun geometryOf(index: Int, side: Dp): Geometry {
+    val unit = side / UNITS_PER_SIDE
+    val corner = unit * CORNER_UNITS
+    val run = side - corner // where the far corner begins
+
+    return when (index) {
+        0 -> Geometry(run, run, corner, corner, Edge.BOTTOM, isCorner = true)
+        in 1..9 -> Geometry(
+            x = side - corner - unit * index,
+            y = run,
+            width = unit,
+            height = corner,
+            edge = Edge.BOTTOM,
+            isCorner = false,
+        )
+        10 -> Geometry(0.dp, run, corner, corner, Edge.LEFT, isCorner = true)
+        in 11..19 -> Geometry(
+            x = 0.dp,
+            y = side - corner - unit * (index - 10),
+            width = corner,
+            height = unit,
+            edge = Edge.LEFT,
+            isCorner = false,
+        )
+        20 -> Geometry(0.dp, 0.dp, corner, corner, Edge.TOP, isCorner = true)
+        in 21..29 -> Geometry(
+            x = corner + unit * (index - 21),
+            y = 0.dp,
+            width = unit,
+            height = corner,
+            edge = Edge.TOP,
+            isCorner = false,
+        )
+        30 -> Geometry(run, 0.dp, corner, corner, Edge.TOP, isCorner = true)
+        else -> Geometry(
+            x = run,
+            y = corner + unit * (index - 31),
+            width = corner,
+            height = unit,
+            edge = Edge.RIGHT,
+            isCorner = false,
+        )
+    }
+}
+
+/**
+ * Corners are deeper than the runs between them, as on the printed board.
+ *
+ * The depth is what a name has to fit into, and 1.5 was not quite enough: a
+ * two-line street name pushed its price off the bottom of the square.
+ */
+private const val CORNER_UNITS = 1.7f
+private const val UNITS_PER_SIDE = 2 * CORNER_UNITS + 9
 
 /**
  * The board.
@@ -72,241 +163,507 @@ fun BoardView(
 ) {
     BoxWithConstraints(
         modifier = modifier
-            .background(BoardFace, RoundedCornerShape(6.dp))
-            .border(2.dp, BoardEdge, RoundedCornerShape(6.dp))
-            .padding(2.dp),
+            .background(BoardEdge, RoundedCornerShape(8.dp))
+            .padding(3.dp)
+            .background(BoardFace, RoundedCornerShape(6.dp)),
     ) {
-        // Square cells, sized to whichever dimension is tighter, so the board
-        // stays square on a phone in portrait and a tablet in landscape alike.
-        val cell: Dp = minOf(maxWidth, maxHeight) / GRID
-        val occupants = state.players
-            .filter { it.isActive }
-            .groupBy { it.position }
+        val side: Dp = minOf(maxWidth, maxHeight)
+        val unit = side / UNITS_PER_SIDE
+        val occupants = state.players.filter { it.isActive }.groupBy { it.position }
 
         ClassicBoard.spaces.forEach { space ->
-            val (row, column) = gridPosition(space.index)
-            SpaceCell(
+            val geometry = geometryOf(space.index, side)
+            val deed = state.deeds[space.index]
+            SpaceSlot(
                 space = space,
-                deed = state.deeds[space.index],
-                ownerSeat = state.deeds[space.index]?.let { deed ->
-                    state.players.indexOfFirst { it.id == deed.owner }
+                deed = deed,
+                ownerSeat = deed?.let { owned ->
+                    state.players.indexOfFirst { it.id == owned.owner }
                 },
                 tokens = occupants[space.index].orEmpty().map { player ->
+                    val seat = state.players.indexOfFirst { it.id == player.id }
                     TokenMark(
                         initial = player.name.take(1).uppercase(),
-                        color = seatColor(state.players.indexOfFirst { it.id == player.id }),
+                        color = seatColor(seat),
                         inJail = player.inJail && space.index == ClassicBoard.JAIL_INDEX,
                     )
                 },
-                size = cell,
+                geometry = geometry,
+                unit = unit,
                 modifier = Modifier
-                    .offset(x = cell * column, y = cell * row)
+                    .offset(x = geometry.x, y = geometry.y)
                     .clickable { onSpaceClick(space.index) },
             )
         }
 
-        // The middle of the board, left for the deck art and the big status.
+        val corner = unit * CORNER_UNITS
         Box(
             modifier = Modifier
-                .offset(x = cell, y = cell)
-                .size(cell * (GRID - 2))
-                .padding(6.dp),
+                .offset(x = corner, y = corner)
+                .size(side - corner * 2)
+                .padding(unit * 0.4f),
             contentAlignment = Alignment.Center,
         ) {
-            BoardCentre(state = state, width = cell * (GRID - 2))
+            BoardCentre(state = state, unit = unit)
         }
     }
 }
 
-private const val GRID = 11
-
 /** A player's piece, as it appears on a square. */
 private data class TokenMark(val initial: String, val color: Color, val inJail: Boolean)
 
+/**
+ * One square: the turned face, plus the pieces standing on it.
+ *
+ * Tokens are drawn outside the rotation on purpose. If they turned with the
+ * face, a piece on a side edge would show its letter lying down — the board
+ * rotates, the players do not.
+ */
 @Composable
-private fun SpaceCell(
+private fun SpaceSlot(
     space: Space,
     deed: Deed?,
     ownerSeat: Int?,
     tokens: List<TokenMark>,
-    size: Dp,
+    geometry: Geometry,
+    unit: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val owned = deed != null
-    Column(
+    // A quarter-turned face is laid out in the un-turned orientation first, so
+    // its width and height swap relative to the slot it will occupy.
+    val quarterTurned = geometry.rotation == 90f || geometry.rotation == 270f
+    val naturalWidth = if (quarterTurned) geometry.height else geometry.width
+    val naturalHeight = if (quarterTurned) geometry.width else geometry.height
+
+    Box(
         modifier = modifier
-            .size(size)
-            .padding(0.5.dp)
-            .background(if (owned) ownerTint(ownerSeat) else SpaceFace, RoundedCornerShape(2.dp))
-            .border(0.5.dp, BoardEdge.copy(alpha = 0.45f), RoundedCornerShape(2.dp)),
+            .size(geometry.width, geometry.height)
+            .padding(0.4.dp)
+            .background(
+                if (deed != null) ownerTint(ownerSeat) else space.baseColor(),
+                RoundedCornerShape(1.dp),
+            )
+            .border(0.6.dp, BoardEdge.copy(alpha = 0.5f), RoundedCornerShape(1.dp)),
     ) {
-        // The colour band, on the edge facing the middle of the board.
-        if (space is Street) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(size * 0.2f)
-                    .background(space.group.displayColor),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (deed != null && deed.houses > 0) {
-                    Buildings(houses = deed.houses, size = size)
-                }
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                // requiredSize, not size: a plain size is coerced by the parent,
+                // which on the side edges would squash the face from the
+                // square's depth down to its width before the rotation ever
+                // happened, cutting the price off the bottom.
+                .requiredSize(naturalWidth, naturalHeight)
+                .rotate(geometry.rotation),
+        ) {
+            if (geometry.isCorner) {
+                CornerFace(space, unit)
+            } else {
+                EdgeFace(space, deed, unit, geometry.edge.bandAtTop)
             }
         }
 
+        if (tokens.isNotEmpty()) {
+            TokenCluster(
+                tokens = tokens,
+                unit = unit,
+                modifier = Modifier.align(geometry.edge.tokenAlignment(geometry.isCorner)),
+            )
+        }
+    }
+}
+
+/** Pieces sit toward the outer rim, clear of the colour band and the name. */
+private fun Edge.tokenAlignment(isCorner: Boolean): Alignment = when {
+    isCorner -> Alignment.BottomStart
+    this == Edge.BOTTOM -> Alignment.BottomCenter
+    this == Edge.LEFT -> Alignment.CenterStart
+    this == Edge.TOP -> Alignment.TopCenter
+    else -> Alignment.CenterEnd
+}
+
+@Composable
+private fun EdgeFace(space: Space, deed: Deed?, unit: Dp, bandAtTop: Boolean) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (bandAtTop) ColourBand(space, deed, unit)
+
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 1.dp),
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = unit * 0.04f, vertical = unit * 0.06f),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.Center,
         ) {
-            Text(
-                text = space.shortLabel(),
-                style = TextStyle(
-                    fontSize = (size.value * 0.15f).coerceIn(5f, 9f).sp,
-                    lineHeight = (size.value * 0.17f).coerceIn(6f, 10f).sp,
-                    fontWeight = FontWeight.Medium,
-                ),
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                color = BoardEdge,
-            )
+            val label = space.boardLabel()
+            // Every square gets its symbol back now that the face is no longer
+            // being squashed: a railroad or utility is recognised by its icon
+            // long before anyone reads the name.
+            SpaceGlyph(space, unit, visible = true)
 
-            if (deed?.mortgaged == true) {
+            if (label.isNotEmpty()) {
                 Text(
-                    "MORTGAGED",
-                    style = TextStyle(fontSize = (size.value * 0.12f).coerceIn(4f, 7f).sp),
-                    color = Color(0xFFB00020),
+                    text = label,
+                    style = TextStyle(
+                        fontSize = (unit.value * 0.2f).coerceIn(5f, 10f).sp,
+                        lineHeight = (unit.value * 0.23f).coerceIn(6f, 11f).sp,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = BoardEdge,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            space.subtitle(deed)?.let { (text, tint) ->
+                Text(
+                    text,
+                    style = TextStyle(
+                        fontSize = (unit.value * 0.18f).coerceIn(5f, 9f).sp,
+                        fontWeight = if (tint == MonopolyRed) FontWeight.Bold else FontWeight.Normal,
+                    ),
+                    color = tint,
                     maxLines = 1,
                 )
-            } else if (space is Purchasable) {
+            }
+        }
+
+        if (!bandAtTop) ColourBand(space, deed, unit)
+    }
+}
+
+@Composable
+private fun ColumnScope.ColourBand(space: Space, deed: Deed?, unit: Dp) {
+    if (space !is Street) return
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(unit * 0.34f)
+            .background(space.group.displayColor)
+            .border(0.6.dp, BoardEdge.copy(alpha = 0.55f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (deed != null && deed.houses > 0) Buildings(deed.houses, unit)
+    }
+}
+
+/** The little symbol that tells a square apart at a glance. */
+@Composable
+private fun SpaceGlyph(space: Space, unit: Dp, visible: Boolean) {
+    if (!visible) return
+    val glyph = when (space) {
+        is Railroad -> "🚂"
+        is Utility -> if (space.index == 12) "💡" else "🚰"
+        is ChanceSpace -> "?"
+        is CommunityChestSpace -> "🎁"
+        is TaxSpace -> "💰"
+        else -> null
+    } ?: return
+
+    Text(
+        glyph,
+        style = TextStyle(
+            fontSize = (unit.value * (if (space is ChanceSpace) 0.6f else 0.32f))
+                .coerceIn(8f, 26f).sp,
+            fontWeight = FontWeight.Black,
+        ),
+        color = if (space is ChanceSpace) ChanceOrange else BoardEdge,
+        maxLines = 1,
+    )
+}
+
+@Composable
+private fun CornerFace(space: Space, unit: Dp) {
+    val big = (unit.value * 0.34f).coerceIn(8f, 17f).sp
+    val small = (unit.value * 0.18f).coerceIn(5f, 9f).sp
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(unit * 0.1f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        when (space) {
+            is Go -> {
                 Text(
-                    "$${space.price}",
-                    style = TextStyle(fontSize = (size.value * 0.14f).coerceIn(5f, 8f).sp),
+                    "GO",
+                    style = TextStyle(fontSize = big * 1.6f, fontWeight = FontWeight.Black),
+                    color = MonopolyRed,
+                )
+                Text(
+                    "COLLECT $200",
+                    style = TextStyle(fontSize = small, fontWeight = FontWeight.SemiBold),
+                    color = BoardEdge,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                )
+            }
+
+            is JailSpace -> {
+                Text("⛓", style = TextStyle(fontSize = big), color = BoardEdge)
+                Text(
+                    "JAIL",
+                    style = TextStyle(fontSize = big, fontWeight = FontWeight.Black),
+                    color = BoardEdge,
+                )
+                Text(
+                    "just visiting",
+                    style = TextStyle(fontSize = small),
                     color = BoardEdge.copy(alpha = 0.7f),
                     maxLines = 1,
                 )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                // Everyone on this square, shown at once. Crowded corners are
-                // normal in Monopoly, so pieces shrink rather than overflow.
-                tokens.take(MAX_VISIBLE_TOKENS).forEach { token ->
-                    TokenDot(token, size)
-                }
+            is FreeParking -> {
+                Text("🅿", style = TextStyle(fontSize = big * 1.2f), color = MonopolyRed)
+                Text(
+                    "FREE\nPARKING",
+                    style = TextStyle(
+                        fontSize = small,
+                        lineHeight = small * 1.2f,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                    color = BoardEdge,
+                    textAlign = TextAlign.Center,
+                )
             }
+
+            is GoToJail -> {
+                Text("👮", style = TextStyle(fontSize = big * 1.2f), color = BoardEdge)
+                Text(
+                    "GO TO\nJAIL",
+                    style = TextStyle(
+                        fontSize = small,
+                        lineHeight = small * 1.2f,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                    color = BoardEdge,
+                    textAlign = TextAlign.Center,
+                )
+            }
+
+            else -> Text(space.name, style = TextStyle(fontSize = small), color = BoardEdge)
+        }
+    }
+}
+
+@Composable
+private fun TokenCluster(tokens: List<TokenMark>, unit: Dp, modifier: Modifier = Modifier) {
+    val diameter = (unit * 0.4f).coerceIn(9.dp, 20.dp)
+    Row(
+        modifier = modifier.padding(unit * 0.05f),
+        horizontalArrangement = Arrangement.spacedBy(-diameter * 0.25f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Crowded squares are normal in Monopoly, so pieces overlap slightly
+        // rather than squeezing the square's own label away.
+        tokens.take(MAX_VISIBLE_TOKENS).forEach { token ->
+            Box(
+                modifier = Modifier
+                    .size(diameter)
+                    .clip(CircleShape)
+                    .background(token.color)
+                    .border(
+                        width = if (token.inJail) 1.6.dp else 1.dp,
+                        color = if (token.inJail) MonopolyRed else Color.White,
+                        shape = CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    token.initial,
+                    style = TextStyle(
+                        fontSize = (diameter.value * 0.55f).coerceIn(6f, 12f).sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                    color = Color.White,
+                    maxLines = 1,
+                )
+            }
+        }
+        if (tokens.size > MAX_VISIBLE_TOKENS) {
+            Text(
+                "+${tokens.size - MAX_VISIBLE_TOKENS}",
+                style = TextStyle(fontSize = (diameter.value * 0.45f).coerceIn(5f, 10f).sp),
+                color = BoardEdge,
+            )
         }
     }
 }
 
 private const val MAX_VISIBLE_TOKENS = 4
 
-@Composable
-private fun TokenDot(token: TokenMark, cell: Dp) {
-    val diameter = (cell * 0.26f).coerceAtLeast(8.dp)
-    Box(
-        modifier = Modifier
-            .padding(0.5.dp)
-            .size(diameter)
-            .clip(CircleShape)
-            .background(token.color)
-            .border(
-                width = if (token.inJail) 1.5.dp else 0.5.dp,
-                color = if (token.inJail) Color(0xFFB00020) else Color.White,
-                shape = CircleShape,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            token.initial,
-            style = TextStyle(
-                fontSize = (diameter.value * 0.55f).coerceIn(5f, 10f).sp,
-                fontWeight = FontWeight.Bold,
-            ),
-            color = Color.White,
-            maxLines = 1,
-        )
-    }
-}
-
 /** Four houses, or one hotel. */
 @Composable
-private fun Buildings(houses: Int, size: Dp) {
-    Row(horizontalArrangement = Arrangement.Center) {
+private fun Buildings(houses: Int, unit: Dp) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(unit * 0.03f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         if (houses == Deed.HOTEL) {
             Box(
                 modifier = Modifier
-                    .width(size * 0.22f)
-                    .height(size * 0.12f)
-                    .background(Color(0xFFB71C1C), RoundedCornerShape(1.dp)),
+                    .width(unit * 0.4f)
+                    .height(unit * 0.22f)
+                    .background(MonopolyRed, RoundedCornerShape(1.dp))
+                    .border(0.5.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(1.dp)),
             )
         } else {
             repeat(houses) {
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 0.3.dp)
-                        .size(size * 0.1f)
-                        .background(Color(0xFF1B5E20), RoundedCornerShape(1.dp)),
+                        .size(unit * 0.15f)
+                        .background(Color(0xFF0E7A3C), RoundedCornerShape(0.5.dp))
+                        .border(0.4.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(0.5.dp)),
                 )
             }
         }
     }
 }
 
-/** A faint wash of the owner's colour, so holdings are readable at a glance. */
+/** A faint wash of the owner's colour, so holdings read at a glance. */
 private fun ownerTint(seatIndex: Int?): Color =
     if (seatIndex == null || seatIndex < 0) SpaceFace
-    else seatColor(seatIndex).copy(alpha = 0.18f)
+    else seatColor(seatIndex).copy(alpha = 0.16f)
+
+/**
+ * Chance and Community Chest carry their colour across the whole square.
+ *
+ * These are solid, pre-mixed colours rather than a translucent tint: the square
+ * sits on green felt, and a see-through orange over green comes out olive.
+ */
+private fun Space.baseColor(): Color = when (this) {
+    is ChanceSpace -> ChanceFace
+    is CommunityChestSpace -> ChestFace
+    else -> SpaceFace
+}
 
 @Composable
-private fun BoardCentre(state: GameState, width: Dp) {
+private fun BoardCentre(state: GameState, unit: Dp) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = Arrangement.spacedBy(unit * 0.35f),
     ) {
-        Text(
-            "MONOPOLY",
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontWeight = FontWeight.Black,
-                letterSpacing = (width.value * 0.02f).sp,
-            ),
-            color = BoardEdge,
-            maxLines = 1,
-        )
-        state.turn.lastRoll?.let { roll ->
+        Row(horizontalArrangement = Arrangement.spacedBy(unit * 0.5f)) {
+            DeckCard("CHANCE", ChanceOrange, unit, tilt = -7f)
+            DeckCard("COMMUNITY\nCHEST", ChestBlue, unit, tilt = 6f)
+        }
+
+        Box(
+            modifier = Modifier
+                .background(MonopolyRed, RoundedCornerShape(2.dp))
+                .border(1.dp, BoardEdge.copy(alpha = 0.35f), RoundedCornerShape(2.dp))
+                .padding(horizontal = unit * 0.5f, vertical = unit * 0.16f),
+        ) {
             Text(
-                "${roll.first} + ${roll.second} = ${roll.total}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = BoardEdge.copy(alpha = 0.8f),
+                "MONOPOLY",
+                style = TextStyle(
+                    fontSize = (unit.value * 0.5f).coerceIn(13f, 34f).sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = (unit.value * 0.06f).coerceIn(1f, 5f).sp,
+                ),
+                color = Color.White,
+                maxLines = 1,
             )
         }
+
+        state.turn.lastRoll?.let { roll ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                DicePair(roll, size = (unit * 0.75f).coerceIn(18.dp, 44.dp))
+                Text(
+                    if (roll.isDoubles) "Doubles — ${roll.total}" else "${roll.total}",
+                    style = TextStyle(
+                        fontSize = (unit.value * 0.22f).coerceIn(8f, 14f).sp,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = BoardEdge.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(top = unit * 0.1f),
+                )
+            }
+        }
+
         if (state.freeParkingPot > 0) {
             Text(
-                "Free Parking: $${state.freeParkingPot}",
-                style = MaterialTheme.typography.labelSmall,
-                color = BoardEdge.copy(alpha = 0.7f),
+                "Free Parking pot: $${state.freeParkingPot}",
+                style = TextStyle(fontSize = (unit.value * 0.2f).coerceIn(7f, 12f).sp),
+                color = BoardEdge.copy(alpha = 0.75f),
             )
         }
     }
 }
 
-/** A name short enough to fit on a square. */
-private fun Space.shortLabel(): String = when (this) {
-    is Street -> name
-        .removeSuffix(" Avenue")
-        .removeSuffix(" Place")
-        .removeSuffix(" Gardens")
-        .removeSuffix(" Walk")
-    is Railroad -> name.removeSuffix(" Railroad")
-    is Utility -> name
-    is TaxSpace -> "$name\n$$amount"
-    is ChanceSpace -> "?"
-    is CommunityChestSpace -> "Chest"
-    else -> name
+@Composable
+private fun DeckCard(label: String, color: Color, unit: Dp, tilt: Float) {
+    Box(
+        modifier = Modifier
+            .rotate(tilt)
+            .size(width = unit * 1.9f, height = unit * 1.2f)
+            .background(color, RoundedCornerShape(2.dp))
+            .border(1.dp, BoardEdge.copy(alpha = 0.4f), RoundedCornerShape(2.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = TextStyle(
+                fontSize = (unit.value * 0.17f).coerceIn(5f, 10f).sp,
+                lineHeight = (unit.value * 0.2f).coerceIn(6f, 11f).sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.5.sp,
+            ),
+            color = Color.White,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** The line under the name: a price, a tax, or a mortgage warning. */
+private fun Space.subtitle(deed: Deed?): Pair<String, Color>? = when {
+    deed?.mortgaged == true -> "MORTGAGED" to MonopolyRed
+    this is TaxSpace -> "$$amount" to BoardEdge.copy(alpha = 0.8f)
+    this is Purchasable -> "$$price" to BoardEdge.copy(alpha = 0.75f)
+    else -> null
+}
+
+/**
+ * Names cut to fit a square, with the line breaks chosen rather than left to
+ * the layout — an automatic wrap gives you "Mediterra / nean".
+ */
+private fun Space.boardLabel(): String = when (index) {
+    1 -> "Mediter-\nranean"
+    3 -> "Baltic"
+    4 -> "Income\nTax"
+    5 -> "Reading"
+    6 -> "Oriental"
+    8 -> "Vermont"
+    9 -> "Connect-\nicut"
+    11 -> "St.\nCharles"
+    12 -> "Electric\nCo."
+    13 -> "States"
+    14 -> "Virginia"
+    15 -> "Penn.\nRailroad"
+    16 -> "St. James"
+    18 -> "Tennes-\nsee"
+    19 -> "New York"
+    21 -> "Kentucky"
+    23 -> "Indiana"
+    24 -> "Illinois"
+    25 -> "B. & O."
+    26 -> "Atlantic"
+    27 -> "Ventnor"
+    28 -> "Water\nWorks"
+    29 -> "Marvin\nGardens"
+    31 -> "Pacific"
+    32 -> "North\nCarolina"
+    34 -> "Penn.\nAvenue"
+    35 -> "Short Line"
+    37 -> "Park Place"
+    38 -> "Luxury\nTax"
+    39 -> "Boardwalk"
+    else -> when (this) {
+        is CommunityChestSpace -> "Chest"
+        is ChanceSpace -> "CHANCE"
+        else -> ""
+    }
 }

@@ -37,7 +37,3 @@ private val seatColors = listOf(
 
 fun seatColor(seatIndex: Int): Color = seatColors[seatIndex.mod(seatColors.size)]
 
-/** The felt-green board face. */
-val BoardFace = Color(0xFFCDE6D0)
-val BoardEdge = Color(0xFF2E3B2F)
-val SpaceFace = Color(0xFFF7F7F2)
