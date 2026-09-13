@@ -1,5 +1,7 @@
 package com.monopoly.android.ui.board
 
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -172,8 +174,16 @@ private fun PlayerRoster(state: GameState) {
                     fontWeight = if (isTurn) FontWeight.Bold else FontWeight.Normal,
                     modifier = Modifier.weight(1f),
                 )
+                // Counting rather than jumping. It is the difference between
+                // noticing you were charged and having to work out why the
+                // number is different.
+                val shownMoney by animateIntAsState(
+                    targetValue = player.money,
+                    animationSpec = tween(durationMillis = 550),
+                    label = "balance",
+                )
                 Text(
-                    "$${player.money}",
+                    "$$shownMoney",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                 )

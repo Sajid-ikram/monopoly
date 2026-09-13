@@ -12,8 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.monopoly.android.game.BoardAnimator
 import com.monopoly.android.game.LocalGame
 
 /**
@@ -25,6 +28,18 @@ import com.monopoly.android.game.LocalGame
  */
 @Composable
 fun GameScreen(game: LocalGame, modifier: Modifier = Modifier) {
+    val animator = remember { BoardAnimator() }
+
+    // One consumer for the whole screen. The game never waits on it: moves are
+    // queued as they happen and played out here at the board's own pace, so a
+    // fast tapper is never blocked by an animation still finishing.
+    LaunchedEffect(game) {
+        animator.syncTo(game.state)
+        for (move in game.moves) {
+            animator.play(move, game.state)
+        }
+    }
+
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val wide = maxWidth > maxHeight
 
@@ -37,6 +52,8 @@ fun GameScreen(game: LocalGame, modifier: Modifier = Modifier) {
             ) {
                 BoardView(
                     state = game.state,
+                    shownPositions = animator.positions,
+                    movingPlayer = animator.moving,
                     modifier = Modifier
                         .fillMaxHeight()
                         .aspectRatio(1f),
@@ -59,6 +76,8 @@ fun GameScreen(game: LocalGame, modifier: Modifier = Modifier) {
             ) {
                 BoardView(
                     state = game.state,
+                    shownPositions = animator.positions,
+                    movingPlayer = animator.moving,
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f),

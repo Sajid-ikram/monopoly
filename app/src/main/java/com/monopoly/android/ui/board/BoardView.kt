@@ -1,5 +1,7 @@
 package com.monopoly.android.ui.board
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,11 +23,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -58,6 +62,7 @@ import com.monopoly.core.board.TaxSpace
 import com.monopoly.core.board.Utility
 import com.monopoly.core.model.Deed
 import com.monopoly.core.model.GameState
+import com.monopoly.core.model.PlayerId
 
 /**
  * Which edge of the board a space sits on, and how its face is turned.
@@ -159,6 +164,14 @@ private const val UNITS_PER_SIDE = 2 * CORNER_UNITS + 9
 fun BoardView(
     state: GameState,
     modifier: Modifier = Modifier,
+    /**
+     * Where the pieces are *drawn*, which trails the state while a move plays
+     * out. Empty means "wherever the state says", which is what a preview or a
+     * freshly opened board gets.
+     */
+    shownPositions: Map<PlayerId, Int> = emptyMap(),
+    /** The piece currently travelling, drawn raised so the eye follows it. */
+    movingPlayer: PlayerId? = null,
     onSpaceClick: (Int) -> Unit = {},
 ) {
     BoxWithConstraints(
@@ -169,7 +182,9 @@ fun BoardView(
     ) {
         val side: Dp = minOf(maxWidth, maxHeight)
         val unit = side / UNITS_PER_SIDE
-        val occupants = state.players.filter { it.isActive }.groupBy { it.position }
+        val occupants = state.players
+            .filter { it.isActive }
+            .groupBy { shownPositions[it.id] ?: it.position }
 
         ClassicBoard.spaces.forEach { space ->
             val geometry = geometryOf(space.index, side)
@@ -186,6 +201,7 @@ fun BoardView(
                         initial = player.name.take(1).uppercase(),
                         color = seatColor(seat),
                         inJail = player.inJail && space.index == ClassicBoard.JAIL_INDEX,
+                        travelling = player.id == movingPlayer,
                     )
                 },
                 geometry = geometry,
@@ -210,7 +226,12 @@ fun BoardView(
 }
 
 /** A player's piece, as it appears on a square. */
-private data class TokenMark(val initial: String, val color: Color, val inJail: Boolean)
+private data class TokenMark(
+    val initial: String,
+    val color: Color,
+    val inJail: Boolean,
+    val travelling: Boolean = false,
+)
 
 /**
  * One square: the turned face, plus the pieces standing on it.
@@ -460,8 +481,23 @@ private fun TokenCluster(tokens: List<TokenMark>, unit: Dp, modifier: Modifier =
         // Crowded squares are normal in Monopoly, so pieces overlap slightly
         // rather than squeezing the square's own label away.
         tokens.take(MAX_VISIBLE_TOKENS).forEach { token ->
+            // A travelling piece lifts off the board, so the eye can follow it
+            // across a run of squares instead of losing it among the others.
+            val lift by animateFloatAsState(
+                targetValue = if (token.travelling) 1f else 0f,
+                animationSpec = spring(dampingRatio = 0.55f, stiffness = 900f),
+                label = "token lift",
+            )
             Box(
                 modifier = Modifier
+                    .graphicsLayer {
+                        val raised = 1f + lift * TRAVEL_LIFT
+                        scaleX = raised
+                        scaleY = raised
+                        shadowElevation = lift * TRAVEL_SHADOW
+                        shape = CircleShape
+                        clip = false
+                    }
                     .size(diameter)
                     .clip(CircleShape)
                     .background(token.color)
@@ -494,6 +530,10 @@ private fun TokenCluster(tokens: List<TokenMark>, unit: Dp, modifier: Modifier =
 }
 
 private const val MAX_VISIBLE_TOKENS = 4
+
+/** How much a travelling piece grows, and how far it floats above the board. */
+private const val TRAVEL_LIFT = 0.45f
+private const val TRAVEL_SHADOW = 10f
 
 /** Four houses, or one hotel. */
 @Composable
