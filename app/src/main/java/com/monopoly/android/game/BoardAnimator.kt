@@ -11,27 +11,45 @@ import com.monopoly.core.model.PlayerId
 import kotlinx.coroutines.delay
 
 /**
- * One piece of movement for the board to play out.
+ * Something for the board to play out, in the order it happened.
  *
- * [walk] separates the two kinds of move that look completely different on a
- * real table: counting a piece forward square by square after a roll, versus
- * picking it up and putting it somewhere else because a card said so.
+ * One ordered stream rather than a move queue plus a resync flag, because the
+ * two have to stay in order relative to each other: a resync that overtook the
+ * moves still in flight would put the pieces right and then walk them wrong.
  */
-data class MoveIntent(
-    val player: PlayerId,
-    val from: Int,
-    val to: Int,
-    val walk: Boolean,
-)
+sealed interface BoardUpdate {
+
+    /**
+     * A piece travelling from one square to another.
+     *
+     * [walk] separates the two kinds of move that look completely different on
+     * a real table: counting a piece forward square by square after a roll,
+     * versus picking it up and putting it somewhere else because a card said so.
+     */
+    data class Move(
+        val player: PlayerId,
+        val from: Int,
+        val to: Int,
+        val walk: Boolean,
+    ) : BoardUpdate
+
+    /**
+     * Put every piece where the state says it is, with no animation.
+     *
+     * Sent when the client has been handed a fresh snapshot: whatever the board
+     * was in the middle of showing is now about a game that has moved on.
+     */
+    data object Snap : BoardUpdate
+}
 
 /**
  * Where the pieces *appear* to be, which lags behind where they are.
  *
- * The game state is authoritative and updates the instant a command is
- * accepted. This holds the board's slower opinion, so a piece can be seen
- * travelling. Keeping the two apart is what lets the animation be purely
- * decorative: if it were ever interrupted or skipped, the state it is chasing
- * is still correct, and [syncTo] puts the pieces where they belong.
+ * The game state is authoritative and updates the instant the server says so.
+ * This holds the board's slower opinion, so a piece can be seen travelling.
+ * Keeping the two apart is what lets the animation be purely decorative: if it
+ * were ever interrupted or skipped, the state it is chasing is still correct,
+ * and [syncTo] puts the pieces where they belong.
  */
 @Stable
 class BoardAnimator {
@@ -47,6 +65,8 @@ class BoardAnimator {
 
     /** Places every piece where the state says it is, with no animation. */
     fun syncTo(state: GameState) {
+        moving = null
+        shown.keys.retainAll(state.players.map { it.id }.toSet())
         state.players.forEach { player -> shown[player.id] = player.position }
     }
 
@@ -55,28 +75,35 @@ class BoardAnimator {
         if (player !in shown) shown[player] = state.playerOrNull(player)?.position ?: 0
     }
 
-    suspend fun play(intent: MoveIntent, state: GameState) {
-        ensureKnown(state, intent.player)
+    suspend fun apply(update: BoardUpdate, state: GameState) {
+        when (update) {
+            is BoardUpdate.Snap -> syncTo(state)
+            is BoardUpdate.Move -> play(update, state)
+        }
+    }
 
-        if (!intent.walk) {
+    private suspend fun play(move: BoardUpdate.Move, state: GameState) {
+        ensureKnown(state, move.player)
+
+        if (!move.walk) {
             // A card moved them, or they were sent to jail: the piece is lifted
             // and placed, not counted around.
-            shown[intent.player] = intent.to
+            shown[move.player] = move.to
             delay(JUMP_PAUSE_MILLIS)
             return
         }
 
-        moving = intent.player
-        var square = intent.from
-        // Bounded so a malformed intent can never spin here forever.
+        moving = move.player
+        var square = move.from
+        // Bounded so a malformed update can never spin here forever.
         repeat(ClassicBoard.SPACE_COUNT) {
-            if (square == intent.to) return@repeat
+            if (square == move.to) return@repeat
             square = ClassicBoard.normalize(square + 1)
-            shown[intent.player] = square
+            shown[move.player] = square
             // The last step lands rather than hops, so the piece settles.
-            if (square != intent.to) delay(STEP_MILLIS)
+            if (square != move.to) delay(STEP_MILLIS)
         }
-        shown[intent.player] = intent.to
+        shown[move.player] = move.to
         delay(LANDING_PAUSE_MILLIS)
         moving = null
     }

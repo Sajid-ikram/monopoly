@@ -21,14 +21,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MonopolyTheme {
-                // A hot-seat game for now: one device, players take turns. The
-                // networked session slots in behind the same screen later.
-                val game = remember { LocalGame.newGame(playerCount = 3) }
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    GameScreen(
-                        game = game,
-                        modifier = Modifier.padding(innerPadding),
-                    )
+                    MonopolyApp(modifier = Modifier.padding(innerPadding))
                 }
             }
         }

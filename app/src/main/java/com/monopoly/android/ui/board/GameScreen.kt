@@ -17,7 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.monopoly.android.game.BoardAnimator
-import com.monopoly.android.game.LocalGame
+import com.monopoly.android.game.GameHolder
 
 /**
  * The game, laid out for whatever screen it finds itself on.
@@ -27,16 +27,17 @@ import com.monopoly.android.game.LocalGame
  * two composables — the layout changes, the content does not.
  */
 @Composable
-fun GameScreen(game: LocalGame, modifier: Modifier = Modifier) {
+fun GameScreen(game: GameHolder, modifier: Modifier = Modifier) {
     val animator = remember { BoardAnimator() }
 
-    // One consumer for the whole screen. The game never waits on it: moves are
-    // queued as they happen and played out here at the board's own pace, so a
-    // fast tapper is never blocked by an animation still finishing.
+    // One consumer for the whole screen. The game never waits on it: updates
+    // are queued as they happen and played out here at the board's own pace, so
+    // a fast tapper is never blocked by an animation still finishing, and a
+    // slow connection never has to wait for one either.
     LaunchedEffect(game) {
         animator.syncTo(game.state)
-        for (move in game.moves) {
-            animator.play(move, game.state)
+        for (update in game.updates) {
+            animator.apply(update, game.state)
         }
     }
 

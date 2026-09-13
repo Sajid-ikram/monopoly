@@ -36,7 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.monopoly.android.game.LocalGame
+import com.monopoly.android.game.GameHolder
 import com.monopoly.android.ui.theme.displayColor
 import com.monopoly.android.ui.theme.seatColor
 import com.monopoly.core.board.ClassicBoard
@@ -88,7 +88,7 @@ private class TradeDraft {
  */
 @Composable
 fun TradeComposer(
-    game: LocalGame,
+    game: GameHolder,
     proposer: PlayerId,
     counterTo: TradeOffer?,
     onDismiss: () -> Unit,
@@ -358,7 +358,7 @@ private fun CashStepper(cash: Int, max: Int, onCash: (Int) -> Unit) {
  */
 @Composable
 fun PendingTradeCard(
-    game: LocalGame,
+    game: GameHolder,
     phase: GamePhase.AwaitingTradeResponse,
     onCounter: () -> Unit,
 ) {
@@ -380,18 +380,26 @@ fun PendingTradeCard(
             BundleSummary("${from.name} gives", offer.offered)
             BundleSummary("${to.name} gives", offer.requested)
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { game.dispatch(Command.AcceptTrade(offer.to)) },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Accept") }
-                FilledTonalButton(onClick = onCounter, modifier = Modifier.weight(1f)) {
-                    Text("Counter")
+            if (game.controls(offer.to)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { game.dispatch(Command.AcceptTrade(offer.to)) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Accept") }
+                    FilledTonalButton(onClick = onCounter, modifier = Modifier.weight(1f)) {
+                        Text("Counter")
+                    }
+                    OutlinedButton(
+                        onClick = { game.dispatch(Command.RejectTrade(offer.to)) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Decline") }
                 }
-                OutlinedButton(
-                    onClick = { game.dispatch(Command.RejectTrade(offer.to)) },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Decline") }
+            } else {
+                Text(
+                    "Waiting for ${to.name} to answer.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

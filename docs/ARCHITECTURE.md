@@ -173,6 +173,48 @@ is enforced by their build files rather than by convention. The moment `:core`
 gains an Android dependency, the server can no longer share it — and sharing it
 is the entire reason the client and server can be trusted to agree.
 
+
+## The client
+
+The client is the other half of the reconnect story, and it is deliberately
+thin: it holds no rules, applies no optimistic updates, and cannot make the
+board show anything the server did not send.
+
+Three pieces:
+
+**`GameConnection`** owns the socket and nothing else. It reopens it as often
+as it takes, with capped exponential backoff and jitter — jitter because a whole
+game's worth of clients drop at the same instant when the server restarts, and
+without it they would all come back in the same instant too. It knows nothing
+about Monopoly; what to say on a new socket is asked of its owner.
+
+**`NetworkGame`** tracks the sequence it has reached and folds events onto the
+state. The gap check is the load-bearing part: events only mean anything applied
+to the state they were computed against, so a batch that does not follow on is
+not something to apply carefully, it is something to refuse and replace with a
+snapshot.
+
+**`SessionStore`** keeps the resume token on disk. That token is the difference
+between "my train went through a tunnel" and "I lost the game", so it is written
+the moment the server issues it.
+
+What falls out of this:
+
+- Commands sent while the socket is down are queued, not lost, and delivered
+  when it comes back.
+- Commands sent but never acknowledged are resent on reconnect. Safe because
+  each carries a client-generated id and the server performs a repeated id no
+  second time — so the client can retry without ever having to work out whether
+  the first attempt got through.
+- Closing the app does not leave the game. The seat and the token outlive it,
+  and the next launch offers to walk straight back in.
+
+The same board renders a hot-seat game and a networked one, because both are a
+`GameHolder`. The only thing the screen asks is whether this device may act for
+a given seat — `null` meaning "all of them", which is what passing one phone
+round the table actually means. The server does not trust that answer; it checks
+the same thing itself against the seat the socket authenticated as.
+
 ## Testing
 
 - `BoardTest` — the board is transcribed data; a typo would produce a game that

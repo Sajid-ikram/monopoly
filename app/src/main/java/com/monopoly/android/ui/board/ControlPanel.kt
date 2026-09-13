@@ -31,7 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.monopoly.android.game.LocalGame
+import com.monopoly.android.game.GameHolder
 import com.monopoly.android.ui.theme.seatColor
 import com.monopoly.core.board.ClassicBoard
 import com.monopoly.core.board.Street
@@ -51,7 +51,7 @@ import com.monopoly.core.model.TradeOffer
  * If a button is on screen, the command behind it is legal.
  */
 @Composable
-fun ControlPanel(game: LocalGame, modifier: Modifier = Modifier) {
+fun ControlPanel(game: GameHolder, modifier: Modifier = Modifier) {
     val state = game.state
     Column(
         modifier = modifier.padding(12.dp),
@@ -86,7 +86,7 @@ fun ControlPanel(game: LocalGame, modifier: Modifier = Modifier) {
  * that would be refused.
  */
 @Composable
-private fun TradeAction(game: LocalGame) {
+private fun TradeAction(game: GameHolder) {
     val state = game.state
     var composing by remember { mutableStateOf(false) }
     var counterTo by remember { mutableStateOf<TradeOffer?>(null) }
@@ -104,8 +104,9 @@ private fun TradeAction(game: LocalGame) {
     }
 
     // Whoever may trade is not always the player whose turn it is: a debtor can
-    // trade their way out of a bankruptcy.
-    val trader = when (phase) {
+    // trade their way out of a bankruptcy. Over the network it is only ever
+    // you, and canOpenTrade below decides whether this is your moment.
+    val trader = game.you ?: when (phase) {
         is GamePhase.AwaitingDebtSettlement -> phase.debtor
         else -> state.players.getOrNull(state.currentPlayerIndex)?.id
     }
@@ -193,25 +194,30 @@ private fun PlayerRoster(state: GameState) {
 }
 
 @Composable
-private fun PhaseActions(game: LocalGame) {
+private fun PhaseActions(game: GameHolder) {
     val state = game.state
     val current = state.players[state.currentPlayerIndex]
 
     when (val phase = state.phase) {
         is GamePhase.Lobby -> {
             Text("Waiting to start", style = MaterialTheme.typography.titleMedium)
-            Button(
-                onClick = { game.dispatch(Command.StartGame(state.players.first().id)) },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Start game") }
+            val host = state.players.first()
+            if (game.controls(host.id)) {
+                Button(
+                    onClick = { game.dispatch(Command.StartGame(host.id)) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Start game") }
+            }
         }
 
         is GamePhase.AwaitingRoll -> {
             Text("${current.name} to roll", style = MaterialTheme.typography.titleMedium)
-            Button(
-                onClick = { game.dispatch(Command.RollDice(current.id)) },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Roll dice") }
+            if (game.controls(current.id)) {
+                Button(
+                    onClick = { game.dispatch(Command.RollDice(current.id)) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Roll dice") }
+            }
         }
 
         is GamePhase.AwaitingJailDecision -> {
@@ -221,21 +227,23 @@ private fun PhaseActions(game: LocalGame) {
                     "Roll doubles to walk free, or pay the fine.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            Button(
-                onClick = { game.dispatch(Command.RollDice(current.id)) },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Roll for doubles") }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(
-                    onClick = { game.dispatch(Command.PayJailFine(current.id)) },
-                    enabled = current.money >= state.rules.jailFine,
-                    modifier = Modifier.weight(1f),
-                ) { Text("Pay £${state.rules.jailFine}") }
-                if (current.getOutOfJailCards.isNotEmpty()) {
+            if (game.controls(current.id)) {
+                Button(
+                    onClick = { game.dispatch(Command.RollDice(current.id)) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Roll for doubles") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(
-                        onClick = { game.dispatch(Command.UseJailCard(current.id)) },
+                        onClick = { game.dispatch(Command.PayJailFine(current.id)) },
+                        enabled = current.money >= state.rules.jailFine,
                         modifier = Modifier.weight(1f),
-                    ) { Text("Use card") }
+                    ) { Text("Pay £${state.rules.jailFine}") }
+                    if (current.getOutOfJailCards.isNotEmpty()) {
+                        FilledTonalButton(
+                            onClick = { game.dispatch(Command.UseJailCard(current.id)) },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Use card") }
+                    }
                 }
             }
         }
@@ -247,17 +255,19 @@ private fun PhaseActions(game: LocalGame) {
                 "Unowned. ${current.name} may buy it for £${space?.price}.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { game.dispatch(Command.BuyProperty(current.id)) },
-                    enabled = current.money >= (space?.price ?: 0),
-                    modifier = Modifier.weight(1f),
-                ) { Text("Buy £${space?.price}") }
-                OutlinedButton(
-                    onClick = { game.dispatch(Command.DeclineProperty(current.id)) },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(if (state.rules.auctionUnboughtProperties) "Auction it" else "Pass")
+            if (game.controls(current.id)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { game.dispatch(Command.BuyProperty(current.id)) },
+                        enabled = current.money >= (space?.price ?: 0),
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Buy £${space?.price}") }
+                    OutlinedButton(
+                        onClick = { game.dispatch(Command.DeclineProperty(current.id)) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(if (state.rules.auctionUnboughtProperties) "Auction it" else "Pass")
+                    }
                 }
             }
         }
@@ -272,27 +282,31 @@ private fun PhaseActions(game: LocalGame) {
                     "or declare bankruptcy. Nothing is sold automatically.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { game.dispatch(Command.SettleDebt(phase.debtor)) },
-                    enabled = debtor.money >= phase.amount,
-                    modifier = Modifier.weight(1f),
-                ) { Text("Pay £${phase.amount}") }
-                OutlinedButton(
-                    onClick = { game.dispatch(Command.DeclareBankruptcy(phase.debtor)) },
-                    enabled = state.liquidationValue(phase.debtor) < phase.amount,
-                    modifier = Modifier.weight(1f),
-                ) { Text("Bankrupt") }
+            if (game.controls(phase.debtor)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { game.dispatch(Command.SettleDebt(phase.debtor)) },
+                        enabled = debtor.money >= phase.amount,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Pay £${phase.amount}") }
+                    OutlinedButton(
+                        onClick = { game.dispatch(Command.DeclareBankruptcy(phase.debtor)) },
+                        enabled = state.liquidationValue(phase.debtor) < phase.amount,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Bankrupt") }
+                }
             }
         }
 
         is GamePhase.AwaitingTurnEnd -> {
             Text("${current.name}'s turn", style = MaterialTheme.typography.titleMedium)
-            Button(
-                onClick = { game.dispatch(Command.EndTurn(current.id)) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (phase.mayRollAgain) "Roll again (doubles)" else "End turn")
+            if (game.controls(current.id)) {
+                Button(
+                    onClick = { game.dispatch(Command.EndTurn(current.id)) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (phase.mayRollAgain) "Roll again (doubles)" else "End turn")
+                }
             }
         }
 
@@ -312,7 +326,7 @@ private fun PhaseActions(game: LocalGame) {
 }
 
 @Composable
-private fun AuctionControls(game: LocalGame, phase: GamePhase.Auction) {
+private fun AuctionControls(game: GameHolder, phase: GamePhase.Auction) {
     val state = game.state
     val bidder = phase.currentBidder?.let { state.player(it) } ?: return
     val space = ClassicBoard.purchasableAt(phase.spaceIndex)
@@ -327,6 +341,7 @@ private fun AuctionControls(game: LocalGame, phase: GamePhase.Auction) {
         },
         style = MaterialTheme.typography.bodySmall,
     )
+    if (!game.controls(bidder.id)) return
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(10, 50, 100).forEach { increment ->
             val bid = phase.highestBid + increment
@@ -350,13 +365,20 @@ private fun AuctionControls(game: LocalGame, phase: GamePhase.Auction) {
  * stays available rather than appearing only in a dedicated phase.
  */
 @Composable
-private fun Holdings(game: LocalGame) {
+private fun Holdings(game: GameHolder) {
     val state = game.state
     var expanded by remember { mutableStateOf(false) }
-    val owner = when (val phase = state.phase) {
-        // During a debt it is the debtor who needs to raise money, and it may
-        // not be their turn.
-        is GamePhase.AwaitingDebtSettlement -> state.player(phase.debtor)
+    val you = game.you
+    val phase = state.phase
+    val owner = when {
+        // Over the network your own property is the only property you can act
+        // on, and you want to look at it during someone else's turn — that is
+        // when you work out what to build.
+        you != null -> state.playerOrNull(you) ?: return
+        // Passing one phone round, "yours" is whoever is holding it. During a
+        // debt that is the debtor, who needs to raise the money, and it may not
+        // be their turn.
+        phase is GamePhase.AwaitingDebtSettlement -> state.player(phase.debtor)
         else -> state.players[state.currentPlayerIndex]
     }
     val deeds = state.deedsOf(owner.id)
@@ -385,7 +407,7 @@ private fun Holdings(game: LocalGame) {
 }
 
 @Composable
-private fun DeedRow(game: LocalGame, owner: Player, deed: Deed) {
+private fun DeedRow(game: GameHolder, owner: Player, deed: Deed) {
     val state = game.state
     val space = ClassicBoard[deed.spaceIndex]
     val street = space as? Street
@@ -405,7 +427,7 @@ private fun DeedRow(game: LocalGame, owner: Player, deed: Deed) {
                         },
                     )
                     if (!deed.mortgaged) {
-                        append(" · rent $")
+                        append(" · rent £")
                         append(Rent.rentFor(state, deed.spaceIndex, state.turn.lastRoll))
                     }
                 },
@@ -457,7 +479,7 @@ private fun DeedRow(game: LocalGame, owner: Player, deed: Deed) {
 }
 
 @Composable
-private fun ActivityLog(game: LocalGame) {
+private fun ActivityLog(game: GameHolder) {
     Text("Activity", style = MaterialTheme.typography.titleSmall)
     // A plain Column, not a LazyColumn: this sits inside a scrolling parent,
     // and a lazy list there has no bounded height to measure against. The

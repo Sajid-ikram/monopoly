@@ -4,9 +4,9 @@ A multiplayer Monopoly for Android, built around an authoritative server and a
 deterministic rules engine — because the common failure of digital Monopoly is
 not the rules, it is the connection.
 
-> **Status: early.** The rules engine, the game server and the board UI all
-> work. The app plays a full hot-seat game on one device; it does not talk to
-> the server yet.
+> **Status: early, but playable.** Host a game, read the four-letter code to
+> your friends, and play. There is no hosted server yet, so one of you has to
+> run it — see **Running it** below.
 
 ## Why this exists
 
@@ -60,12 +60,33 @@ protocol/   The wire format: commands in, sequenced events out, plus the
 server/     Ktor WebSocket server. A referee around the engine: it decides
             whether and when a command runs, never what it does.
 app/        The Android client (Jetpack Compose).
+            game/  a game in progress. The same screen renders a hot-seat
+                   game and a networked one: both are a GameHolder.
+            net/   the socket, and what survives the app being closed.
+            ui/    the board, the controls, the lobby.
 ```
 
 `core` and `protocol` are plain JVM modules, enforced by their build files
 rather than by convention. The moment `core` gained an Android dependency the
 server could no longer share it — and sharing it is the entire reason the two
 ends can be trusted to agree.
+
+## Running it
+
+Start the server on a machine everyone can reach:
+
+```
+./gradlew :server:run
+```
+
+Then in the app, under **Server settings**, point it at that machine. The
+default `ws://10.0.2.2:8080/play` is how an emulator reaches the computer it is
+running on; a real phone needs the host's address on your network, something
+like `ws://192.168.1.20:8080/play`.
+
+Debug builds allow plain `ws://` for exactly this reason. Release builds do not,
+so a real deployment has to be `wss://` — which is not something that can be
+lost by forgetting to change a setting back.
 
 ## Rules implemented
 
@@ -115,10 +136,12 @@ use to join:
 - [x] Wire protocol with sequencing, resume and idempotent commands
 - [x] Ktor WebSocket server with a per-game event log
 - [x] Board UI and the full turn flow, playable hot-seat on one device
-- [ ] Client session: connect, resume, sequence tracking, command retry
+- [x] Client session: connect, resume, sequence tracking, command retry
+- [x] Lobby: host a game, share the code, friends join by typing it
 - [x] Player-to-player trading, including counter-offers
 - [ ] Turn timers and a policy for a player who never reconnects
 - [ ] Persist the event log so a server restart does not end games in progress
+- [ ] A hosted server, so nobody has to run one
 
 ## Licence
 

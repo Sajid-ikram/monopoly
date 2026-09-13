@@ -245,10 +245,15 @@ private suspend fun resumeSeat(
     }
 
     session.attach(playerId, connection)
-    session.emitServerEvents(listOf(GameEvent.ConnectionChanged(playerId, connected = true)))
 
     // Welcome carries the full state, so the returning client is correct
     // immediately even if it kept nothing at all.
+    //
+    // It must go first. A client cannot interpret an event before it has been
+    // told which sequence it is starting from: announcing the reconnection
+    // ahead of the welcome sends a client that kept nothing an event numbered
+    // hundreds ahead of where it thinks it is, and it quite correctly concludes
+    // it has lost track and asks for a snapshot it was already being sent.
     connection.offer(
         ServerMessage.Welcome(
             gameCode = session.code,
@@ -258,6 +263,10 @@ private suspend fun resumeSeat(
             sequence = session.sequenceNumber(),
         ),
     )
+
+    // Now that this client knows where it stands, tell everyone — it included —
+    // that the seat is occupied again.
+    session.emitServerEvents(listOf(GameEvent.ConnectionChanged(playerId, connected = true)))
     return Seated(session, playerId)
 }
 

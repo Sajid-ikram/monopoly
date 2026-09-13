@@ -52,6 +52,14 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.kotlinx.coroutines.core)
 
+    // The WebSocket to the game server. OkHttp is the engine because it is what
+    // Android networking is already built on: it survives the radio sleeping,
+    // network changes and doze, which is the whole problem this client exists
+    // to handle.
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.websockets)
+
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
