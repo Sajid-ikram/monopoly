@@ -3,9 +3,12 @@ package com.monopoly.android.ui.board
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,20 +18,25 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.monopoly.android.game.GameHolder
@@ -42,6 +50,7 @@ import com.monopoly.core.model.GamePhase
 import com.monopoly.core.model.GameState
 import com.monopoly.core.model.Player
 import com.monopoly.core.model.TradeOffer
+import kotlinx.coroutines.delay
 
 /**
  * Everything the player can do, and nothing they cannot.
@@ -53,6 +62,7 @@ import com.monopoly.core.model.TradeOffer
 @Composable
 fun ControlPanel(game: GameHolder, modifier: Modifier = Modifier) {
     val state = game.state
+    YourTurnNudge(game)
     Column(
         modifier = modifier.padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -67,19 +77,130 @@ fun ControlPanel(game: GameHolder, modifier: Modifier = Modifier) {
             RejectionNotice(reason.readable()) { game.dismissRejection() }
         }
 
-        PhaseActions(game)
+        WaitingNotice(game)
 
-        TradeAction(game)
+        // Everything that acts on the game, held still while one of those
+        // actions is still in the post.
+        Box {
+            Column(
+                modifier = Modifier.alpha(if (game.busy) DIMMED_ALPHA else 1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                PhaseActions(game)
 
-        HorizontalDivider()
+                TradeAction(game)
 
-        Holdings(game)
+                HorizontalDivider()
+
+                Holdings(game)
+            }
+            if (game.busy) TapBlocker()
+        }
 
         HorizontalDivider()
 
         ActivityLog(game)
     }
 }
+
+/**
+ * Swallows taps while a command is unanswered.
+ *
+ * Nothing on screen has changed yet — the client does not guess at results —
+ * so a second press would send a second command rather than doing nothing. The
+ * controls are dimmed by [Modifier.alpha] and made inert by this.
+ */
+@Composable
+private fun BoxScope.TapBlocker() {
+    Box(
+        modifier = Modifier
+            .matchParentSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            ),
+    )
+}
+
+/**
+ * Says the server is being waited on, but only once that is worth saying.
+ *
+ * On a good connection the reply beats the finger off the screen, and a spinner
+ * that appears for thirty milliseconds is noise. After [QUIET_WAIT_MILLIS] it
+ * stops being a round trip and starts being a wait, which is the moment a
+ * player wants to know their tap was heard.
+ */
+@Composable
+private fun WaitingNotice(game: GameHolder) {
+    var lingering by remember { mutableStateOf(false) }
+
+    LaunchedEffect(game.busy) {
+        if (!game.busy) {
+            lingering = false
+        } else {
+            delay(QUIET_WAIT_MILLIS)
+            lingering = true
+        }
+    }
+
+    if (!game.busy || !lingering) return
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(6.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(14.dp),
+            strokeWidth = 2.dp,
+        )
+        Text(
+            "Sent. Waiting for the server…",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+private const val QUIET_WAIT_MILLIS = 400L
+
+/**
+ * A tap on the wrist when the game comes round to you.
+ *
+ * Between turns a phone goes face down on the table and the player goes back to
+ * the conversation — which is exactly as it should be, and exactly why the game
+ * has to say when it needs them. Haptics rather than sound, because the whole
+ * point is that it works in a pocket and does not interrupt the room.
+ *
+ * Nothing fires in a hot-seat game: the phone is being passed hand to hand, so
+ * whoever is holding it already knows.
+ */
+@Composable
+private fun YourTurnNudge(game: GameHolder) {
+    val you = game.you ?: return
+    val haptics = LocalHapticFeedback.current
+    val state = game.state
+
+    val waitingOnYou = when (val phase = state.phase) {
+        is GamePhase.Lobby, is GamePhase.GameOver -> false
+        is GamePhase.Auction -> phase.currentBidder == you
+        is GamePhase.AwaitingDebtSettlement -> phase.debtor == you
+        is GamePhase.AwaitingTradeResponse -> phase.offer.to == you
+        else -> state.players.getOrNull(state.currentPlayerIndex)?.id == you
+    }
+
+    // Keyed on the answer, not the state, so it fires on the edge rather than
+    // once per event while it stays your turn.
+    LaunchedEffect(waitingOnYou) {
+        if (waitingOnYou) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+    }
+}
+
+/** How far the controls fade while they are inert. */
+private const val DIMMED_ALPHA = 0.45f
 
 /**
  * The Trade button, and the composer it opens.

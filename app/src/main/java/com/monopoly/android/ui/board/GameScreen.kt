@@ -13,6 +13,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -29,6 +32,13 @@ import com.monopoly.android.game.GameHolder
 @Composable
 fun GameScreen(game: GameHolder, modifier: Modifier = Modifier) {
     val animator = remember { BoardAnimator() }
+
+    // Which square's deed is being read, if any. Held here rather than inside
+    // the board so that tapping a square works the same in both layouts.
+    var inspecting by remember { mutableStateOf<Int?>(null) }
+    inspecting?.let { index ->
+        SpaceCard(state = game.state, spaceIndex = index, onDismiss = { inspecting = null })
+    }
 
     // One consumer for the whole screen. The game never waits on it: updates
     // are queued as they happen and played out here at the board's own pace, so
@@ -55,6 +65,7 @@ fun GameScreen(game: GameHolder, modifier: Modifier = Modifier) {
                     state = game.state,
                     shownPositions = animator.positions,
                     movingPlayer = animator.moving,
+                    onSpaceClick = { inspecting = it },
                     modifier = Modifier
                         .fillMaxHeight()
                         .aspectRatio(1f),
@@ -79,6 +90,7 @@ fun GameScreen(game: GameHolder, modifier: Modifier = Modifier) {
                     state = game.state,
                     shownPositions = animator.positions,
                     movingPlayer = animator.moving,
+                    onSpaceClick = { inspecting = it },
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f),

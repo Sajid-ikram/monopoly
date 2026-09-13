@@ -293,13 +293,23 @@ private fun SpaceSlot(
     }
 }
 
-/** Pieces sit toward the outer rim, clear of the colour band and the name. */
+/**
+ * Pieces gather at the outer corner a piece arrives from.
+ *
+ * The outer rim, because the inner half is the colour band and the name. The
+ * *corner* rather than the middle of that rim, because the price sits centred
+ * along it — on a phone-sized board a piece parked mid-rim covers the price
+ * exactly, which is the one number you want while deciding whether to buy.
+ *
+ * Arriving corner rather than an arbitrary one, so the cluster grows in the
+ * direction of travel and sits where the eye is already looking.
+ */
 private fun Edge.tokenAlignment(isCorner: Boolean): Alignment = when {
     isCorner -> Alignment.BottomStart
-    this == Edge.BOTTOM -> Alignment.BottomCenter
-    this == Edge.LEFT -> Alignment.CenterStart
-    this == Edge.TOP -> Alignment.TopCenter
-    else -> Alignment.CenterEnd
+    this == Edge.BOTTOM -> Alignment.BottomEnd
+    this == Edge.LEFT -> Alignment.BottomStart
+    this == Edge.TOP -> Alignment.TopStart
+    else -> Alignment.TopEnd
 }
 
 @Composable

@@ -35,6 +35,19 @@ interface GameHolder {
     /** Movement for the board to play out. Consumed by exactly one screen. */
     val updates: ReceiveChannel<BoardUpdate>
 
+    /**
+     * Whether a command has been sent and not yet answered.
+     *
+     * The client never guesses at the result, so between the tap and the
+     * server's reply there is genuinely nothing new to show. Saying so is the
+     * difference between a slow connection and a broken one — and it is what
+     * stops an impatient second tap becoming a second command.
+     *
+     * Always false for a hot-seat game: the engine is right here, and the
+     * answer arrives before the finger leaves the screen.
+     */
+    val busy: Boolean get() = false
+
     fun dispatch(command: Command)
 
     fun dismissRejection()

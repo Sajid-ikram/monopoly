@@ -60,7 +60,7 @@ fun OnlineGameScreen(
         when {
             ended != null -> SessionEnded(ended.reason, onLeave)
 
-            state == null -> Waiting("Connecting…")
+            state == null -> Waiting(game, onLeave)
 
             state.phase is GamePhase.Lobby -> WaitingRoom(
                 game = game,
@@ -123,18 +123,49 @@ private fun reconnectingMessage(attempt: Int): String = when {
     else -> "Still reconnecting. Your seat is being held — nothing is lost."
 }
 
+/**
+ * Before the first welcome there is no game to show, only a wait.
+ *
+ * The way out matters as much as the spinner. A wrong server address fails by
+ * hanging rather than by refusing — there is nothing there to say no — so
+ * without a door this screen is a dead end you can only leave by killing the
+ * app, which is exactly where the address would have been corrected.
+ */
 @Composable
-private fun Waiting(message: String) {
+private fun Waiting(game: NetworkGame, onLeave: () -> Unit) {
+    val attempt = (game.status as? ConnectionStatus.Reconnecting)?.attempt ?: 0
+
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
+            modifier = Modifier
+                .widthIn(max = 360.dp)
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             CircularProgressIndicator()
-            Text(message, style = MaterialTheme.typography.bodyMedium)
+            Text("Connecting…", style = MaterialTheme.typography.bodyMedium)
+
+            // Said only once it has clearly not worked, so a normal connection
+            // is not accompanied by a troubleshooting note.
+            if (attempt >= SUGGEST_CHECKING_AFTER) {
+                Text(
+                    "No answer yet. Check the server address under Server " +
+                        "settings, and that the machine running it is on the " +
+                        "same network.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
+
+            OutlinedButton(onClick = onLeave) { Text("Back") }
         }
     }
 }
+
+/** Two failed attempts is a few seconds — enough to tell a blip from a mistake. */
+private const val SUGGEST_CHECKING_AFTER = 2
 
 @Composable
 private fun SessionEnded(reason: String, onLeave: () -> Unit) {

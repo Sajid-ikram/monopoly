@@ -113,6 +113,16 @@ class NetworkGame(
     private val pending = LinkedHashMap<String, ClientMessage.Submit>()
 
     /**
+     * How many of [pending] are outstanding, as something the UI can observe.
+     *
+     * The map itself is a plain LinkedHashMap because order matters on a
+     * resend; this mirrors its size into snapshot state so the controls
+     * recompose when a command lands.
+     */
+    override var busy: Boolean by mutableStateOf(false)
+        private set
+
+    /**
      * Whether this device opened the game, and so may start it or deal again.
      *
      * Asks the state rather than assuming the first seat: starting a game
@@ -153,12 +163,19 @@ class NetworkGame(
             command = command,
         )
         pending[submit.commandId] = submit
+        busy = true
         lastRejection = null
         connection.send(submit)
     }
 
     override fun dismissRejection() {
         lastRejection = null
+    }
+
+    /** A command has come back, whichever way it went. */
+    private fun answered(commandId: String) {
+        pending.remove(commandId)
+        busy = pending.isNotEmpty()
     }
 
     // ------------------------------------------------------------------ hooks
@@ -217,10 +234,10 @@ class NetworkGame(
             is ServerMessage.Welcome -> onWelcome(message)
             is ServerMessage.Events -> onEvents(message)
             is ServerMessage.Snapshot -> onSnapshot(message.state, message.sequence)
-            is ServerMessage.CommandAccepted -> pending.remove(message.commandId)
+            is ServerMessage.CommandAccepted -> answered(message.commandId)
 
             is ServerMessage.CommandRejected -> {
-                pending.remove(message.commandId)
+                answered(message.commandId)
                 lastRejection = message.reason
             }
 
