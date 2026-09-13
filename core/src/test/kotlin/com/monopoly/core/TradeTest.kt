@@ -259,7 +259,7 @@ class TradeTest {
                 3 to Deed(3, current, houses = 1),
             ),
         )
-        // Mediterranean itself has no buildings, but Baltic does, and buildings
+        // Old Kent Road itself has no buildings, but Whitechapel does, and buildings
         // belong to the group rather than the street.
         assertEquals(
             RejectionReason.MUST_SELL_BUILDINGS_FIRST,
@@ -370,7 +370,7 @@ class TradeTest {
             players = base.players.map { if (it.id == current) it.copy(money = 0) else it },
         )
 
-        // Selling Boardwalk to the creditor for enough to cover the debt.
+        // Selling Mayfair to the creditor for enough to cover the debt.
         val traded = indebted
             .accept(
                 Command.ProposeTrade(

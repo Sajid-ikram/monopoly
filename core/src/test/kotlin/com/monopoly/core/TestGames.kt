@@ -45,7 +45,7 @@ object TestGames {
     /**
      * Finds a seed that makes the next roll come out as [first] and [second].
      *
-     * Tests need specific dice — "land on Boardwalk", "roll doubles twice" — but
+     * Tests need specific dice — "land on Mayfair", "roll doubles twice" — but
      * the engine deliberately has no hook to inject them, because any such hook
      * would be a way to cheat. Searching the seed space instead keeps the engine
      * honest and the tests exact. The search finishes in a few thousand tries.

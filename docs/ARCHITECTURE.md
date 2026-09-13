@@ -7,7 +7,7 @@ short version.
 
 **Game logic lives in `:core` and nowhere else.**
 
-The client does not decide anything. It does not know that landing on Boardwalk
+The client does not decide anything. It does not know that landing on Mayfair
 with a hotel costs $2000, that a mortgaged property earns nothing, or that the
 third double sends you to jail. It renders state and sends intent.
 

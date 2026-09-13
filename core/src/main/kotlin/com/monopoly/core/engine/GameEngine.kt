@@ -352,7 +352,7 @@ object GameEngine {
      * Works out what landing on [spaceIndex] costs or offers.
      *
      * [forcedRentMultiplier] is set by the Chance cards that send a player to a
-     * railroad or utility with a penalty rent attached.
+     * station or utility with a penalty rent attached.
      */
     private fun resolveLanding(
         tx: Transaction,
@@ -436,7 +436,7 @@ object GameEngine {
 
             is CardEffect.AdvanceToNearest -> {
                 val candidates = when (effect.kind) {
-                    CardEffect.AdvanceToNearest.Kind.RAILROAD -> ClassicBoard.railroadIndices
+                    CardEffect.AdvanceToNearest.Kind.STATION -> ClassicBoard.stationIndices
                     CardEffect.AdvanceToNearest.Kind.UTILITY -> ClassicBoard.utilityIndices
                 }
                 val from = tx.state.player(actor).position
@@ -916,7 +916,7 @@ object GameEngine {
         if (bundle.cash > giver.money) {
             return Outcome.Rejected(
                 RejectionReason.TRADE_CASH_UNAVAILABLE,
-                "${giver.name} does not have $${bundle.cash}",
+                "${giver.name} does not have £${bundle.cash}",
             )
         }
 

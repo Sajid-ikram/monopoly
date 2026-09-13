@@ -183,7 +183,7 @@ private fun PlayerRoster(state: GameState) {
                     label = "balance",
                 )
                 Text(
-                    "$$shownMoney",
+                    "£$shownMoney",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -230,7 +230,7 @@ private fun PhaseActions(game: LocalGame) {
                     onClick = { game.dispatch(Command.PayJailFine(current.id)) },
                     enabled = current.money >= state.rules.jailFine,
                     modifier = Modifier.weight(1f),
-                ) { Text("Pay $${state.rules.jailFine}") }
+                ) { Text("Pay £${state.rules.jailFine}") }
                 if (current.getOutOfJailCards.isNotEmpty()) {
                     FilledTonalButton(
                         onClick = { game.dispatch(Command.UseJailCard(current.id)) },
@@ -244,7 +244,7 @@ private fun PhaseActions(game: LocalGame) {
             val space = ClassicBoard.purchasableAt(phase.spaceIndex)
             Text("${space?.name}", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Unowned. ${current.name} may buy it for $${space?.price}.",
+                "Unowned. ${current.name} may buy it for £${space?.price}.",
                 style = MaterialTheme.typography.bodySmall,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -252,7 +252,7 @@ private fun PhaseActions(game: LocalGame) {
                     onClick = { game.dispatch(Command.BuyProperty(current.id)) },
                     enabled = current.money >= (space?.price ?: 0),
                     modifier = Modifier.weight(1f),
-                ) { Text("Buy $${space?.price}") }
+                ) { Text("Buy £${space?.price}") }
                 OutlinedButton(
                     onClick = { game.dispatch(Command.DeclineProperty(current.id)) },
                     modifier = Modifier.weight(1f),
@@ -266,7 +266,7 @@ private fun PhaseActions(game: LocalGame) {
 
         is GamePhase.AwaitingDebtSettlement -> {
             val debtor = state.player(phase.debtor)
-            Text("${debtor.name} owes $${phase.amount}", style = MaterialTheme.typography.titleMedium)
+            Text("${debtor.name} owes £${phase.amount}", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Raise the money by selling buildings or mortgaging, " +
                     "or declare bankruptcy. Nothing is sold automatically.",
@@ -277,7 +277,7 @@ private fun PhaseActions(game: LocalGame) {
                     onClick = { game.dispatch(Command.SettleDebt(phase.debtor)) },
                     enabled = debtor.money >= phase.amount,
                     modifier = Modifier.weight(1f),
-                ) { Text("Pay $${phase.amount}") }
+                ) { Text("Pay £${phase.amount}") }
                 OutlinedButton(
                     onClick = { game.dispatch(Command.DeclareBankruptcy(phase.debtor)) },
                     enabled = state.liquidationValue(phase.debtor) < phase.amount,
@@ -322,7 +322,7 @@ private fun AuctionControls(game: LocalGame, phase: GamePhase.Auction) {
         if (phase.highestBidder == null) {
             "No bids yet. ${bidder.name} to bid."
         } else {
-            "$${phase.highestBid} by ${state.player(phase.highestBidder!!).name}. " +
+            "£${phase.highestBid} by ${state.player(phase.highestBidder!!).name}. " +
                 "${bidder.name} to bid."
         },
         style = MaterialTheme.typography.bodySmall,
@@ -334,7 +334,7 @@ private fun AuctionControls(game: LocalGame, phase: GamePhase.Auction) {
                 onClick = { game.dispatch(Command.PlaceBid(bidder.id, bid)) },
                 enabled = bidder.money >= bid,
                 modifier = Modifier.weight(1f),
-            ) { Text("$$bid") }
+            ) { Text("£$bid") }
         }
     }
     OutlinedButton(
@@ -421,13 +421,13 @@ private fun DeedRow(game: LocalGame, owner: Player, deed: Deed) {
                             state.ownsFullGroup(owner.id, street.group) &&
                             owner.money >= street.buildCost,
                         modifier = Modifier.weight(1f),
-                    ) { Text("Build $${street.buildCost}", maxLines = 1) }
+                    ) { Text("Build £${street.buildCost}", maxLines = 1) }
 
                     OutlinedButton(
                         onClick = { game.dispatch(Command.SellHouse(owner.id, deed.spaceIndex)) },
                         enabled = deed.houses > 0,
                         modifier = Modifier.weight(1f),
-                    ) { Text("Sell $${street.buildCost / 2}", maxLines = 1) }
+                    ) { Text("Sell £${street.buildCost / 2}", maxLines = 1) }
                 }
 
                 OutlinedButton(
@@ -446,8 +446,8 @@ private fun DeedRow(game: LocalGame, owner: Player, deed: Deed) {
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(
-                        if (deed.mortgaged) "Redeem $${purchasable.unmortgageCost}"
-                        else "Mortgage $${purchasable.mortgageValue}",
+                        if (deed.mortgaged) "Redeem £${purchasable.unmortgageCost}"
+                        else "Mortgage £${purchasable.mortgageValue}",
                         maxLines = 1,
                     )
                 }

@@ -16,37 +16,37 @@ class RentTest {
     private fun stateWith(vararg deeds: Deed): GameState =
         TestGames.started().copy(deeds = deeds.associateBy { it.spaceIndex })
 
-    // Mediterranean Avenue (1) and Baltic Avenue (3) are the brown group.
-    private val mediterranean = 1
-    private val baltic = 3
+    // Old Kent Road (1) and Whitechapel Road (3) are the brown group.
+    private val oldKent = 1
+    private val whitechapel = 3
 
     @Test
     fun `a lone street charges its base rent`() {
-        val state = stateWith(Deed(mediterranean, owner))
-        assertEquals(2, Rent.rentFor(state, mediterranean, null))
+        val state = stateWith(Deed(oldKent, owner))
+        assertEquals(2, Rent.rentFor(state, oldKent, null))
     }
 
     @Test
     fun `owning the whole colour group doubles undeveloped rent`() {
-        val state = stateWith(Deed(mediterranean, owner), Deed(baltic, owner))
-        assertEquals(4, Rent.rentFor(state, mediterranean, null))
-        assertEquals(8, Rent.rentFor(state, baltic, null))
+        val state = stateWith(Deed(oldKent, owner), Deed(whitechapel, owner))
+        assertEquals(4, Rent.rentFor(state, oldKent, null))
+        assertEquals(8, Rent.rentFor(state, whitechapel, null))
     }
 
     @Test
     fun `the doubling stops as soon as one street of the group is sold`() {
-        val split = stateWith(Deed(mediterranean, owner), Deed(baltic, TestGames.ALICE))
-        assertEquals(2, Rent.rentFor(split, mediterranean, null))
+        val split = stateWith(Deed(oldKent, owner), Deed(whitechapel, TestGames.ALICE))
+        assertEquals(2, Rent.rentFor(split, oldKent, null))
     }
 
     @Test
     fun `houses use the printed tier and are never doubled again`() {
         val state = stateWith(
-            Deed(mediterranean, owner, houses = 3),
-            Deed(baltic, owner),
+            Deed(oldKent, owner, houses = 3),
+            Deed(whitechapel, owner),
         )
-        // Mediterranean with three houses: $90, not $180.
-        assertEquals(90, Rent.rentFor(state, mediterranean, null))
+        // Old Kent Road with three houses: £90, not £180.
+        assertEquals(90, Rent.rentFor(state, oldKent, null))
     }
 
     @Test
@@ -58,25 +58,25 @@ class RentTest {
     @Test
     fun `a mortgaged property earns nothing however developed the group is`() {
         val state = stateWith(
-            Deed(mediterranean, owner, mortgaged = true),
-            Deed(baltic, owner),
+            Deed(oldKent, owner, mortgaged = true),
+            Deed(whitechapel, owner),
         )
-        assertEquals(0, Rent.rentFor(state, mediterranean, null))
+        assertEquals(0, Rent.rentFor(state, oldKent, null))
     }
 
     @Test
     fun `an unowned space charges nothing`() {
-        assertEquals(0, Rent.rentFor(TestGames.started(), mediterranean, null))
+        assertEquals(0, Rent.rentFor(TestGames.started(), oldKent, null))
     }
 
     @Test
-    fun `railroad rent doubles with each railroad held`() {
-        val railroads = listOf(5, 15, 25, 35)
+    fun `station rent doubles with each station held`() {
+        val stations = listOf(5, 15, 25, 35)
         val expected = listOf(25, 50, 100, 200)
-        railroads.indices.forEach { i ->
-            val held = railroads.take(i + 1).map { Deed(it, owner) }
+        stations.indices.forEach { i ->
+            val held = stations.take(i + 1).map { Deed(it, owner) }
             val state = stateWith(*held.toTypedArray())
-            assertEquals(expected[i], Rent.rentFor(state, railroads[0], null), "with ${i + 1} railroads")
+            assertEquals(expected[i], Rent.rentFor(state, stations[0], null), "with ${i + 1} stations")
         }
     }
 
@@ -92,8 +92,8 @@ class RentTest {
 
     @Test
     fun `a card can force a rent multiplier regardless of holdings`() {
-        // "Advance to the nearest railroad and pay twice the usual rent", with
-        // the owner holding only one railroad: 25 x 2.
+        // "Advance to the nearest station and pay twice the usual rent", with
+        // the owner holding only one station: 25 x 2.
         val state = stateWith(Deed(5, owner))
         assertEquals(50, Rent.rentFor(state, 5, null, forcedMultiplier = 2))
 

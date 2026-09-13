@@ -67,7 +67,7 @@ data class Street(
 }
 
 @Serializable
-data class Railroad(
+data class Station(
     override val index: Int,
     override val name: String,
 ) : Purchasable {
@@ -82,7 +82,7 @@ data class Utility(
     override val price: Int get() = 150
 }
 
-/** Income Tax or Luxury Tax: a flat charge paid to the bank. */
+/** Income Tax or Super Tax: a flat charge paid to the bank. */
 @Serializable
 data class TaxSpace(
     override val index: Int,

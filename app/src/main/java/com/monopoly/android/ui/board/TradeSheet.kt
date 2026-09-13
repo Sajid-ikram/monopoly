@@ -318,7 +318,7 @@ private fun CashStepper(cash: Int, max: Int, onCash: (Int) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            "$$cash",
+            "£$cash",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(end = 4.dp),
         )
@@ -343,7 +343,7 @@ private fun CashStepper(cash: Int, max: Int, onCash: (Int) -> Unit) {
         ) { Text("All", style = MaterialTheme.typography.labelSmall) }
     }
     Text(
-        "of $$max",
+        "of £$max",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -400,7 +400,7 @@ fun PendingTradeCard(
 @Composable
 private fun BundleSummary(label: String, bundle: TradeBundle) {
     val parts = buildList {
-        if (bundle.cash > 0) add("$${bundle.cash}")
+        if (bundle.cash > 0) add("£${bundle.cash}")
         bundle.spaces.forEach { add(ClassicBoard[it].name) }
         repeat(bundle.jailCards.size) { add("Get out of Jail Free") }
     }

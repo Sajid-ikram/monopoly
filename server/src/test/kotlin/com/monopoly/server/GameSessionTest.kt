@@ -72,7 +72,7 @@ class GameSessionTest {
         val session = seatedSession()
         session.submit(host, "start", Command.StartGame(host))
 
-        // Give the host Boardwalk so there is something to mortgage.
+        // Give the host Mayfair so there is something to mortgage.
         val current = session.currentState().currentPlayer.id
         val withDeed = session.currentState().copy(deeds = mapOf(39 to Deed(39, current)))
         val owned = GameSession("TEST", withDeed)

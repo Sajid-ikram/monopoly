@@ -10,11 +10,11 @@ sealed interface CardEffect {
     @Serializable
     data class AdvanceTo(val spaceIndex: Int, val collectSalary: Boolean = true) : CardEffect
 
-    /** "Advance to the nearest railroad/utility and pay the owner [rentMultiplier]x." */
+    /** "Advance to the nearest station/utility and pay the owner [rentMultiplier]x." */
     @Serializable
     data class AdvanceToNearest(val kind: Kind, val rentMultiplier: Int) : CardEffect {
         @Serializable
-        enum class Kind { RAILROAD, UTILITY }
+        enum class Kind { STATION, UTILITY }
     }
 
     /** Relative movement; negative moves backwards. Does not pass GO when negative. */

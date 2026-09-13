@@ -2,7 +2,7 @@ package com.monopoly.core.model
 
 import com.monopoly.core.board.ClassicBoard
 import com.monopoly.core.board.ColorGroup
-import com.monopoly.core.board.Railroad
+import com.monopoly.core.board.Station
 import com.monopoly.core.board.Street
 import com.monopoly.core.board.Utility
 import com.monopoly.core.engine.Rng
@@ -109,9 +109,9 @@ data class GameState(
         return indices.all { deeds[it]?.owner == id }
     }
 
-    /** Railroads owned by [id], used to scale railroad rent 25/50/100/200. */
-    fun railroadsOwned(id: PlayerId): Int =
-        ClassicBoard.railroadIndices.count { deeds[it]?.owner == id }
+    /** Stations owned by [id], used to scale station rent 25/50/100/200. */
+    fun stationsOwned(id: PlayerId): Int =
+        ClassicBoard.stationIndices.count { deeds[it]?.owner == id }
 
     /** Utilities owned by [id], used to pick the 4x or 10x dice multiplier. */
     fun utilitiesOwned(id: PlayerId): Int =
@@ -144,7 +144,7 @@ data class GameState(
             val landValue = when {
                 deed.mortgaged -> 0
                 space is Street -> space.mortgageValue
-                space is Railroad -> space.mortgageValue
+                space is Station -> space.mortgageValue
                 space is Utility -> space.mortgageValue
                 else -> 0
             }
@@ -164,7 +164,7 @@ data class GameState(
             val land = when {
                 deed.mortgaged -> 0
                 space is Street -> space.price
-                space is Railroad -> space.price
+                space is Station -> space.price
                 space is Utility -> space.price
                 else -> 0
             }

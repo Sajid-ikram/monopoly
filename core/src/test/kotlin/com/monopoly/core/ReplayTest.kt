@@ -202,7 +202,7 @@ class ReplayTest {
 
         val sellable = state.deedsOf(seller).firstOrNull { deed ->
             val street = com.monopoly.core.board.ClassicBoard.streetAt(deed.spaceIndex)
-                ?: return@firstOrNull true // railroads and utilities are never developed
+                ?: return@firstOrNull true // stations and utilities are never developed
             com.monopoly.core.board.ClassicBoard.streetsByGroup
                 .getValue(street.group)
                 .none { (state.deeds[it]?.houses ?: 0) > 0 }

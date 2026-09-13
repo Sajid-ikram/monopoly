@@ -13,7 +13,7 @@ data class Deed(
     val spaceIndex: Int,
     val owner: PlayerId,
     /**
-     * 0 = bare land, 1..4 = houses, 5 = hotel. Always 0 for railroads and
+     * 0 = bare land, 1..4 = houses, 5 = hotel. Always 0 for stations and
      * utilities, which cannot be developed.
      */
     val houses: Int = 0,

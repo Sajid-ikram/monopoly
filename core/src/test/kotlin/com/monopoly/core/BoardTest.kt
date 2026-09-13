@@ -22,9 +22,9 @@ class BoardTest {
     }
 
     @Test
-    fun `board has twenty two streets, four railroads and two utilities`() {
+    fun `board has twenty two streets, four stations and two utilities`() {
         assertEquals(22, ClassicBoard.spaces.filterIsInstance<Street>().size)
-        assertEquals(4, ClassicBoard.railroadIndices.size)
+        assertEquals(4, ClassicBoard.stationIndices.size)
         assertEquals(2, ClassicBoard.utilityIndices.size)
         assertEquals(28, ClassicBoard.purchasableIndices.size)
     }
@@ -39,10 +39,10 @@ class BoardTest {
 
     @Test
     fun `mortgage value is half price and lifting it costs ten percent more`() {
-        val boardwalk = ClassicBoard.purchasableAt(39)!!
-        assertEquals(400, boardwalk.price)
-        assertEquals(200, boardwalk.mortgageValue)
-        assertEquals(220, boardwalk.unmortgageCost)
+        val mayfair = ClassicBoard.purchasableAt(39)!!
+        assertEquals(400, mayfair.price)
+        assertEquals(200, mayfair.mortgageValue)
+        assertEquals(220, mayfair.unmortgageCost)
     }
 
     @Test
@@ -64,7 +64,7 @@ class BoardTest {
     @Test
     fun `forward distance always travels in the direction of play`() {
         assertEquals(5, ClassicBoard.forwardDistance(0, 5))
-        // From Boardwalk to GO is one step forward, not 39 steps back.
+        // From Mayfair to GO is one step forward, not 39 steps back.
         assertEquals(1, ClassicBoard.forwardDistance(39, 0))
         assertEquals(0, ClassicBoard.forwardDistance(12, 12))
     }

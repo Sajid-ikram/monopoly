@@ -16,7 +16,7 @@ import com.monopoly.core.model.TradeBundle
  * Turns an event into the line a player reads in the activity log.
  *
  * This is one of the reasons the server sends events rather than state
- * snapshots: "Bob paid you $450 for Boardwalk" is right there in the event,
+ * snapshots: "Bob paid you £450 for Mayfair" is right there in the event,
  * whereas deriving it from two snapshots means diffing, and the diff has lost
  * the reason by then.
  *
@@ -48,25 +48,25 @@ fun describe(event: GameEvent, before: GameState): String? {
             "${name(event.player)} moved to ${space(event.to)}."
 
         is GameEvent.MoneyTransferred -> when (event.reason) {
-            MoneyReason.GO_SALARY -> "${name(event.to)} passed GO and collected $${event.amount}."
-            MoneyReason.RENT -> "${name(event.from)} paid ${name(event.to)} $${event.amount} in rent."
-            MoneyReason.TAX -> "${name(event.from)} paid $${event.amount} in tax."
-            MoneyReason.JAIL_FINE -> "${name(event.from)} paid the $${event.amount} jail fine."
+            MoneyReason.GO_SALARY -> "${name(event.to)} passed GO and collected £${event.amount}."
+            MoneyReason.RENT -> "${name(event.from)} paid ${name(event.to)} £${event.amount} in rent."
+            MoneyReason.TAX -> "${name(event.from)} paid £${event.amount} in tax."
+            MoneyReason.JAIL_FINE -> "${name(event.from)} paid the £${event.amount} jail fine."
             MoneyReason.PROPERTY_PURCHASE -> null // covered by the deed event
             MoneyReason.AUCTION_PURCHASE -> null
             MoneyReason.BUILDING_PURCHASE -> null
-            MoneyReason.BUILDING_SALE -> "${name(event.to)} sold buildings for $${event.amount}."
+            MoneyReason.BUILDING_SALE -> "${name(event.to)} sold buildings for £${event.amount}."
             MoneyReason.MORTGAGE -> null
             MoneyReason.UNMORTGAGE -> null
-            MoneyReason.FREE_PARKING -> "${name(event.to)} scooped $${event.amount} off Free Parking."
+            MoneyReason.FREE_PARKING -> "${name(event.to)} scooped £${event.amount} off Free Parking."
             MoneyReason.STARTING_CASH -> null
             MoneyReason.CARD -> if (event.to != null && event.from == null) {
-                "${name(event.to)} collected $${event.amount}."
+                "${name(event.to)} collected £${event.amount}."
             } else {
-                "${name(event.from)} paid $${event.amount}."
+                "${name(event.from)} paid £${event.amount}."
             }
             MoneyReason.BANKRUPTCY_TRANSFER ->
-                "${name(event.to)} took $${event.amount} from ${name(event.from)}."
+                "${name(event.to)} took £${event.amount} from ${name(event.from)}."
             // Covered by the TradeCompleted line, which reads as one deal
             // rather than as two payments going opposite ways.
             MoneyReason.TRADE -> null
@@ -137,7 +137,7 @@ fun describe(event: GameEvent, before: GameState): String? {
                 "${name(phase.offer.from)} offered ${name(phase.offer.to)} a trade."
             is GamePhase.Auction -> "${space(phase.spaceIndex)} goes to auction."
             is GamePhase.AwaitingDebtSettlement ->
-                "${name(phase.debtor)} owes $${phase.amount} and must raise it."
+                "${name(phase.debtor)} owes £${phase.amount} and must raise it."
             is GamePhase.GameOver ->
                 phase.winner?.let { "${name(it)} wins!" } ?: "Game over."
             else -> null
@@ -154,7 +154,7 @@ fun describe(event: GameEvent, before: GameState): String? {
 /** One half of a trade, as a short phrase for the activity log. */
 private fun summarise(bundle: TradeBundle): String {
     val parts = buildList {
-        if (bundle.cash > 0) add("$${bundle.cash}")
+        if (bundle.cash > 0) add("£${bundle.cash}")
         bundle.spaces.forEach { add(ClassicBoard[it].name) }
         repeat(bundle.jailCards.size) { add("a Get Out of Jail Free card") }
     }

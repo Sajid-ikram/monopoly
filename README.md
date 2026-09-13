@@ -69,7 +69,11 @@ ends can be trusted to agree.
 
 ## Rules implemented
 
-Movement, GO salary, rent for streets, railroads and utilities, colour-group
+The board is the UK edition — Old Kent Road to Mayfair, four railway termini,
+and prices in pounds. The numbers are the same in every edition; only the names
+and the currency differ.
+
+Movement, GO salary, rent for streets, stations and utilities, colour-group
 rent doubling, houses and hotels with even-build enforcement and a finite bank
 supply, mortgaging at half price and lifting at 10% interest, both card decks
 with all 32 cards, jail in all four of its exits, property auctions, trading

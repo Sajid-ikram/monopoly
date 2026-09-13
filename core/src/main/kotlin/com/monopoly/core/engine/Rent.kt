@@ -1,7 +1,7 @@
 package com.monopoly.core.engine
 
 import com.monopoly.core.board.ClassicBoard
-import com.monopoly.core.board.Railroad
+import com.monopoly.core.board.Station
 import com.monopoly.core.board.Street
 import com.monopoly.core.board.Utility
 import com.monopoly.core.model.GameState
@@ -12,8 +12,8 @@ import com.monopoly.core.model.GameState
  */
 object Rent {
 
-    /** Railroad rent doubles with each railroad the owner holds: 25/50/100/200. */
-    private const val RAILROAD_BASE = 25
+    /** Station rent doubles with each station the owner holds: 25/50/100/200. */
+    private const val STATION_BASE = 25
 
     /** Utility rent is a multiple of the dice roll, not a fixed sum. */
     private const val UTILITY_SINGLE_MULTIPLIER = 4
@@ -39,7 +39,7 @@ object Rent {
 
         return when (val space = ClassicBoard[spaceIndex]) {
             is Street -> streetRent(state, space, deed.houses, forcedMultiplier)
-            is Railroad -> railroadRent(state.railroadsOwned(deed.owner), forcedMultiplier)
+            is Station -> stationRent(state.stationsOwned(deed.owner), forcedMultiplier)
             is Utility -> utilityRent(state.utilitiesOwned(deed.owner), roll, forcedMultiplier)
             else -> 0
         }
@@ -62,9 +62,9 @@ object Rent {
         return base * (forcedMultiplier ?: 1)
     }
 
-    private fun railroadRent(owned: Int, forcedMultiplier: Int?): Int {
+    private fun stationRent(owned: Int, forcedMultiplier: Int?): Int {
         if (owned <= 0) return 0
-        val base = RAILROAD_BASE shl (owned - 1)
+        val base = STATION_BASE shl (owned - 1)
         return base * (forcedMultiplier ?: 1)
     }
 

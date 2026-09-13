@@ -55,7 +55,7 @@ import com.monopoly.core.board.Go
 import com.monopoly.core.board.GoToJail
 import com.monopoly.core.board.JailSpace
 import com.monopoly.core.board.Purchasable
-import com.monopoly.core.board.Railroad
+import com.monopoly.core.board.Station
 import com.monopoly.core.board.Space
 import com.monopoly.core.board.Street
 import com.monopoly.core.board.TaxSpace
@@ -317,7 +317,7 @@ private fun EdgeFace(space: Space, deed: Deed?, unit: Dp, bandAtTop: Boolean) {
         ) {
             val label = space.boardLabel()
             // Every square gets its symbol back now that the face is no longer
-            // being squashed: a railroad or utility is recognised by its icon
+            // being squashed: a station or utility is recognised by its icon
             // long before anyone reads the name.
             SpaceGlyph(space, unit, visible = true)
 
@@ -374,7 +374,7 @@ private fun ColumnScope.ColourBand(space: Space, deed: Deed?, unit: Dp) {
 private fun SpaceGlyph(space: Space, unit: Dp, visible: Boolean) {
     if (!visible) return
     val glyph = when (space) {
-        is Railroad -> "🚂"
+        is Station -> "🚂"
         is Utility -> if (space.index == 12) "💡" else "🚰"
         is ChanceSpace -> "?"
         is CommunityChestSpace -> "🎁"
@@ -414,7 +414,7 @@ private fun CornerFace(space: Space, unit: Dp) {
                     color = MonopolyRed,
                 )
                 Text(
-                    "COLLECT $200",
+                    "COLLECT £200",
                     style = TextStyle(fontSize = small, fontWeight = FontWeight.SemiBold),
                     color = BoardEdge,
                     textAlign = TextAlign.Center,
@@ -626,7 +626,7 @@ private fun BoardCentre(state: GameState, unit: Dp) {
 
         if (state.freeParkingPot > 0) {
             Text(
-                "Free Parking pot: $${state.freeParkingPot}",
+                "Free Parking pot: £${state.freeParkingPot}",
                 style = TextStyle(fontSize = (unit.value * 0.2f).coerceIn(7f, 12f).sp),
                 color = BoardEdge.copy(alpha = 0.75f),
             )
@@ -661,46 +661,49 @@ private fun DeckCard(label: String, color: Color, unit: Dp, tilt: Float) {
 /** The line under the name: a price, a tax, or a mortgage warning. */
 private fun Space.subtitle(deed: Deed?): Pair<String, Color>? = when {
     deed?.mortgaged == true -> "MORTGAGED" to MonopolyRed
-    this is TaxSpace -> "$$amount" to BoardEdge.copy(alpha = 0.8f)
-    this is Purchasable -> "$$price" to BoardEdge.copy(alpha = 0.75f)
+    this is TaxSpace -> "£$amount" to BoardEdge.copy(alpha = 0.8f)
+    this is Purchasable -> "£$price" to BoardEdge.copy(alpha = 0.75f)
     else -> null
 }
 
 /**
  * Names cut to fit a square, with the line breaks chosen rather than left to
- * the layout — an automatic wrap gives you "Mediterra / nean".
+ * the layout — an automatic wrap gives you "Northumberla / nd".
+ *
+ * A square is nine units wide on a phone, so the long ones are hyphenated the
+ * way the printed board does it rather than shrunk until nobody can read them.
  */
 private fun Space.boardLabel(): String = when (index) {
-    1 -> "Mediter-\nranean"
-    3 -> "Baltic"
+    1 -> "Old Kent\nRoad"
+    3 -> "White-\nchapel"
     4 -> "Income\nTax"
-    5 -> "Reading"
-    6 -> "Oriental"
-    8 -> "Vermont"
-    9 -> "Connect-\nicut"
-    11 -> "St.\nCharles"
+    5 -> "King's\nCross"
+    6 -> "The Angel\nIslington"
+    8 -> "Euston\nRoad"
+    9 -> "Penton-\nville Rd"
+    11 -> "Pall Mall"
     12 -> "Electric\nCo."
-    13 -> "States"
-    14 -> "Virginia"
-    15 -> "Penn.\nRailroad"
-    16 -> "St. James"
-    18 -> "Tennes-\nsee"
-    19 -> "New York"
-    21 -> "Kentucky"
-    23 -> "Indiana"
-    24 -> "Illinois"
-    25 -> "B. & O."
-    26 -> "Atlantic"
-    27 -> "Ventnor"
+    13 -> "Whitehall"
+    14 -> "Northum-\nberland"
+    15 -> "Maryle-\nbone"
+    16 -> "Bow\nStreet"
+    18 -> "Marlbor-\nough St"
+    19 -> "Vine\nStreet"
+    21 -> "Strand"
+    23 -> "Fleet\nStreet"
+    24 -> "Trafalgar\nSquare"
+    25 -> "Fenchurch"
+    26 -> "Leicester\nSquare"
+    27 -> "Coventry\nStreet"
     28 -> "Water\nWorks"
-    29 -> "Marvin\nGardens"
-    31 -> "Pacific"
-    32 -> "North\nCarolina"
-    34 -> "Penn.\nAvenue"
-    35 -> "Short Line"
-    37 -> "Park Place"
-    38 -> "Luxury\nTax"
-    39 -> "Boardwalk"
+    29 -> "Piccadilly"
+    31 -> "Regent\nStreet"
+    32 -> "Oxford\nStreet"
+    34 -> "Bond\nStreet"
+    35 -> "Liverpool\nStreet"
+    37 -> "Park Lane"
+    38 -> "Super\nTax"
+    39 -> "Mayfair"
     else -> when (this) {
         is CommunityChestSpace -> "Chest"
         is ChanceSpace -> "CHANCE"

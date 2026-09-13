@@ -143,12 +143,12 @@ class GameEngineTest {
     fun `buying a property moves the deed and the money`() {
         val state = TestGames.started()
         val actor = state.currentPlayer.id
-        val boardwalk = ClassicBoard.purchasableAt(39)!!
+        val mayfair = ClassicBoard.purchasableAt(39)!!
         val offered = state.copy(phase = GamePhase.AwaitingPurchase(39))
 
         val after = offered.accept(Command.BuyProperty(actor))
         assertEquals(actor, after.ownerOf(39))
-        assertEquals(state.player(actor).money - boardwalk.price, after.player(actor).money)
+        assertEquals(state.player(actor).money - mayfair.price, after.player(actor).money)
     }
 
     @Test
@@ -235,7 +235,7 @@ class GameEngineTest {
 
         val one = brown.accept(Command.BuildHouse(actor, 1))
         assertEquals(1, one.deeds.getValue(1).houses)
-        // Baltic still has none, so Mediterranean cannot take a second.
+        // Whitechapel still has none, so Old Kent Road cannot take a second.
         assertEquals(RejectionReason.UNEVEN_BUILD, one.reject(Command.BuildHouse(actor, 1)).reason)
 
         val two = one.accept(Command.BuildHouse(actor, 3))
@@ -436,7 +436,7 @@ class GameEngineTest {
         val actor = state.currentPlayer.id
         val landlord = state.players.first { it.id != actor }.id
 
-        // Put the poor player one step from a hotel on Boardwalk.
+        // Put the poor player one step from a hotel on Mayfair.
         val setup = state.copy(
             rngState = TestGames.seedRolling(1, 1),
             deeds = mapOf(
@@ -470,7 +470,7 @@ class GameEngineTest {
             deeds = mapOf(39 to Deed(39, actor)),
             players = state.players.map { if (it.id == actor) it.copy(money = 0) else it },
         )
-        // Boardwalk mortgages for $200, so the $100 debt is payable.
+        // Mayfair mortgages for £200, so the £100 debt is payable.
         assertEquals(
             RejectionReason.CAN_STILL_PAY,
             indebted.reject(Command.DeclareBankruptcy(actor)).reason,
