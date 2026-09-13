@@ -4,19 +4,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
+import com.monopoly.android.game.LocalGame
+import com.monopoly.android.ui.board.GameScreen
 import com.monopoly.android.ui.theme.MonopolyTheme
-import com.monopoly.core.board.ClassicBoard
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -24,44 +21,24 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MonopolyTheme {
+                // A hot-seat game for now: one device, players take turns. The
+                // networked session slots in behind the same screen later.
+                val game = remember { LocalGame.newGame(playerCount = 3) }
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    EngineStatus(modifier = Modifier.padding(innerPadding))
+                    GameScreen(
+                        game = game,
+                        modifier = Modifier.padding(innerPadding),
+                    )
                 }
             }
         }
     }
 }
 
-/**
- * A placeholder screen, standing in until the board UI is built.
- *
- * It reads real data out of `:core` rather than showing static text, so that
- * this screen failing to render is a genuine signal that the client is no
- * longer wired to the rules engine.
- */
+@Preview(showBackground = true, widthDp = 900, heightDp = 600)
 @Composable
-fun EngineStatus(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text("Monopoly", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            "Rules engine loaded: ${ClassicBoard.SPACE_COUNT} spaces, " +
-                "${ClassicBoard.purchasableIndices.size} ownable.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            "Board and networking UI not built yet.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun EngineStatusPreview() {
+private fun GameScreenPreview() {
     MonopolyTheme {
-        EngineStatus()
+        GameScreen(game = remember { LocalGame.newGame(playerCount = 3, seed = 1L) })
     }
 }

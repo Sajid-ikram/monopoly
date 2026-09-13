@@ -4,8 +4,9 @@ A multiplayer Monopoly for Android, built around an authoritative server and a
 deterministic rules engine — because the common failure of digital Monopoly is
 not the rules, it is the connection.
 
-> **Status: early.** The rules engine and the game server work and are tested.
-> There is no board UI yet — the app launches to a placeholder screen.
+> **Status: early.** The rules engine, the game server and the board UI all
+> work. The app plays a full hot-seat game on one device; it does not talk to
+> the server yet.
 
 ## Why this exists
 
@@ -109,8 +110,8 @@ use to join:
 - [x] Deterministic rules engine with whole-game replay tests
 - [x] Wire protocol with sequencing, resume and idempotent commands
 - [x] Ktor WebSocket server with a per-game event log
+- [x] Board UI and the full turn flow, playable hot-seat on one device
 - [ ] Client session: connect, resume, sequence tracking, command retry
-- [ ] Board UI, and the turn flow on top of it
 - [ ] Player-to-player trading
 - [ ] Turn timers and a policy for a player who never reconnects
 - [ ] Persist the event log so a server restart does not end games in progress
