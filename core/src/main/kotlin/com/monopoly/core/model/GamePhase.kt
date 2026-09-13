@@ -63,6 +63,21 @@ sealed interface GamePhase {
     @Serializable
     data class AwaitingTurnEnd(val mayRollAgain: Boolean = false) : GamePhase
 
+    /**
+     * A trade has been proposed and the other player has not answered yet.
+     *
+     * [resumePhase] is whatever the game was doing when the offer was made, so
+     * that answering puts play back exactly where it left off. Carrying it here
+     * rather than re-deriving it matters because a trade can be proposed from
+     * several different points in a turn — including out of a debt that the
+     * trade is meant to help pay.
+     */
+    @Serializable
+    data class AwaitingTradeResponse(
+        val offer: TradeOffer,
+        val resumePhase: GamePhase,
+    ) : GamePhase
+
     @Serializable
     data class GameOver(val winner: PlayerId?) : GamePhase
 }

@@ -58,6 +58,45 @@ data class GameState(
 
     fun indexOf(id: PlayerId): Int = players.indexOfFirst { it.id == id }
 
+    /**
+     * Whether [id] may open a trade right now.
+     *
+     * Deliberately wider than "it is your turn": a player facing a debt they
+     * cannot pay may also trade, because selling to another player is often the
+     * only alternative to bankruptcy, and forbidding it there would end games
+     * the table would have happily continued.
+     *
+     * This lives on the state rather than inside the engine so that the UI can
+     * ask the same question the engine will answer. A screen that decided for
+     * itself when to offer a Trade button would drift from the rule, and the
+     * player would meet a button that does nothing.
+     */
+    fun canOpenTrade(id: PlayerId): Boolean = when (val current = phase) {
+        is GamePhase.AwaitingRoll,
+        is GamePhase.AwaitingJailDecision,
+        is GamePhase.AwaitingTurnEnd,
+        -> currentPlayer.id == id && playerOrNull(id)?.isActive == true
+
+        is GamePhase.AwaitingDebtSettlement -> current.debtor == id
+
+        // Not mid-auction, not in the lobby, not while another offer is open,
+        // and not after the game has been won.
+        else -> false
+    }
+
+    /**
+     * Deeds [id] could actually put into a trade.
+     *
+     * A street whose colour group has buildings anywhere on it is excluded:
+     * buildings belong to the group rather than the street, so the whole group
+     * has to be sold back to the bank before any of it changes hands.
+     */
+    fun tradableDeeds(id: PlayerId): List<Deed> = deedsOf(id).filter { deed ->
+        val street = ClassicBoard.streetAt(deed.spaceIndex) ?: return@filter true
+        ClassicBoard.streetsByGroup.getValue(street.group)
+            .none { (deeds[it]?.houses ?: 0) > 0 }
+    }
+
     /** Every space owned by [id], in board order. */
     fun deedsOf(id: PlayerId): List<Deed> =
         deeds.values.filter { it.owner == id }.sortedBy { it.spaceIndex }

@@ -5,6 +5,7 @@ import com.monopoly.core.model.GamePhase
 import com.monopoly.core.model.Player
 import com.monopoly.core.model.PlayerId
 import com.monopoly.core.model.Token
+import com.monopoly.core.model.TradeOffer
 import com.monopoly.core.model.TurnState
 import com.monopoly.core.rules.GameRules
 import kotlinx.serialization.Serializable
@@ -151,6 +152,26 @@ sealed interface GameEvent {
         val deck: DeckKind,
         val deckState: CardDeck,
     ) : GameEvent
+
+    /**
+     * A jail card changing hands in a trade.
+     *
+     * Distinct from [JailCardHeld], which covers a card leaving the deck: this
+     * one never touches a deck, so it carries no deck state.
+     */
+    @Serializable
+    data class JailCardTransferred(
+        val from: PlayerId,
+        val to: PlayerId,
+        val cardId: String,
+    ) : GameEvent
+
+    /** A trade both players agreed to, recorded as one line for the log. */
+    @Serializable
+    data class TradeCompleted(val offer: TradeOffer) : GameEvent
+
+    @Serializable
+    data class TradeRejected(val offer: TradeOffer) : GameEvent
 
     @Serializable
     data class TurnStateChanged(val turn: TurnState) : GameEvent

@@ -10,6 +10,7 @@ import com.monopoly.core.model.Deed
 import com.monopoly.core.model.GamePhase
 import com.monopoly.core.model.GameState
 import com.monopoly.core.model.PlayerId
+import com.monopoly.core.model.TradeBundle
 
 /**
  * Turns an event into the line a player reads in the activity log.
@@ -66,7 +67,9 @@ fun describe(event: GameEvent, before: GameState): String? {
             }
             MoneyReason.BANKRUPTCY_TRANSFER ->
                 "${name(event.to)} took $${event.amount} from ${name(event.from)}."
-            MoneyReason.TRADE -> "${name(event.from)} paid ${name(event.to)} $${event.amount}."
+            // Covered by the TradeCompleted line, which reads as one deal
+            // rather than as two payments going opposite ways.
+            MoneyReason.TRADE -> null
         }
 
         is GameEvent.DeedAssigned -> when {
@@ -109,6 +112,20 @@ fun describe(event: GameEvent, before: GameState): String? {
         is GameEvent.JailCardHeld -> "${name(event.player)} kept a Get Out of Jail Free card."
         is GameEvent.JailCardReturned -> null // the release line already says it
 
+        is GameEvent.JailCardTransferred ->
+            "${name(event.from)} gave ${name(event.to)} a Get Out of Jail Free card."
+
+        is GameEvent.TradeCompleted -> {
+            // One readable line for the whole deal. The individual transfers
+            // have their own events, but a list of them reads as noise.
+            val gave = summarise(event.offer.offered)
+            val got = summarise(event.offer.requested)
+            "${name(event.offer.from)} traded $gave to ${name(event.offer.to)} for $got."
+        }
+
+        is GameEvent.TradeRejected ->
+            "${name(event.offer.to)} turned down ${name(event.offer.from)}'s offer."
+
         is GameEvent.FreeParkingPotChanged -> null
         is GameEvent.TurnStateChanged -> null
 
@@ -116,6 +133,8 @@ fun describe(event: GameEvent, before: GameState): String? {
             "— ${before.players.getOrNull(event.nextPlayerIndex)?.name ?: "Next player"}'s turn —"
 
         is GameEvent.PhaseChanged -> when (val phase = event.phase) {
+            is GamePhase.AwaitingTradeResponse ->
+                "${name(phase.offer.from)} offered ${name(phase.offer.to)} a trade."
             is GamePhase.Auction -> "${space(phase.spaceIndex)} goes to auction."
             is GamePhase.AwaitingDebtSettlement ->
                 "${name(phase.debtor)} owes $${phase.amount} and must raise it."
@@ -130,4 +149,14 @@ fun describe(event: GameEvent, before: GameState): String? {
             if (event.connected) "${name(event.player)} reconnected."
             else "${name(event.player)} lost connection."
     }
+}
+
+/** One half of a trade, as a short phrase for the activity log. */
+private fun summarise(bundle: TradeBundle): String {
+    val parts = buildList {
+        if (bundle.cash > 0) add("$${bundle.cash}")
+        bundle.spaces.forEach { add(ClassicBoard[it].name) }
+        repeat(bundle.jailCards.size) { add("a Get Out of Jail Free card") }
+    }
+    return if (parts.isEmpty()) "nothing" else parts.joinToString(" and ")
 }

@@ -3,6 +3,7 @@ package com.monopoly.core.engine
 import com.monopoly.core.model.GameState
 import com.monopoly.core.model.PlayerId
 import com.monopoly.core.model.Token
+import com.monopoly.core.model.TradeBundle
 import com.monopoly.core.rules.GameRules
 import kotlinx.serialization.Serializable
 
@@ -91,6 +92,39 @@ sealed interface Command {
     @Serializable
     data class UnmortgageProperty(override val actor: PlayerId, val spaceIndex: Int) : Command
 
+    /**
+     * Offers [recipient] a swap of cash, property and jail cards.
+     *
+     * Legal during your own turn, and also while you are the one staring at a
+     * debt you cannot pay — selling a property to another player is often the
+     * only way out, and a game that forbade it there would force bankruptcies
+     * that the table would never have agreed to.
+     */
+    @Serializable
+    data class ProposeTrade(
+        override val actor: PlayerId,
+        val recipient: PlayerId,
+        val offered: TradeBundle,
+        val requested: TradeBundle,
+    ) : Command
+
+    @Serializable
+    data class AcceptTrade(override val actor: PlayerId) : Command
+
+    @Serializable
+    data class RejectTrade(override val actor: PlayerId) : Command
+
+    /**
+     * Answers an offer with a different one, in the other direction. Saves the
+     * recipient having to reject and then wait for their own turn to reply.
+     */
+    @Serializable
+    data class CounterTrade(
+        override val actor: PlayerId,
+        val offered: TradeBundle,
+        val requested: TradeBundle,
+    ) : Command
+
     /** Retry an outstanding debt after raising cash. */
     @Serializable
     data class SettleDebt(override val actor: PlayerId) : Command
@@ -116,6 +150,12 @@ enum class RejectionReason {
     TOKEN_TAKEN,
     NOT_HOST,
     LAST_PLAYER_CANNOT_LEAVE,
+    CANNOT_TRADE_WITH_YOURSELF,
+    EMPTY_TRADE,
+    NO_TRADE_PENDING,
+    NOT_TRADE_RECIPIENT,
+    TRADE_ASSET_UNAVAILABLE,
+    TRADE_CASH_UNAVAILABLE,
     INSUFFICIENT_FUNDS,
     NOT_PURCHASABLE,
     ALREADY_OWNED,

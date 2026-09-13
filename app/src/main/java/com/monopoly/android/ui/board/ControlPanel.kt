@@ -39,6 +39,7 @@ import com.monopoly.core.model.Deed
 import com.monopoly.core.model.GamePhase
 import com.monopoly.core.model.GameState
 import com.monopoly.core.model.Player
+import com.monopoly.core.model.TradeOffer
 
 /**
  * Everything the player can do, and nothing they cannot.
@@ -62,6 +63,8 @@ fun ControlPanel(game: LocalGame, modifier: Modifier = Modifier) {
 
         PhaseActions(game)
 
+        TradeAction(game)
+
         HorizontalDivider()
 
         Holdings(game)
@@ -69,6 +72,70 @@ fun ControlPanel(game: LocalGame, modifier: Modifier = Modifier) {
         HorizontalDivider()
 
         ActivityLog(game)
+    }
+}
+
+/**
+ * The Trade button, and the composer it opens.
+ *
+ * Whether the button appears at all is [GameState.canOpenTrade] — the same
+ * function the engine uses to decide. Asking the state rather than re-deriving
+ * the rule here is what stops the button from ever being offered for a command
+ * that would be refused.
+ */
+@Composable
+private fun TradeAction(game: LocalGame) {
+    val state = game.state
+    var composing by remember { mutableStateOf(false) }
+    var counterTo by remember { mutableStateOf<TradeOffer?>(null) }
+
+    val phase = state.phase
+    if (phase is GamePhase.AwaitingTradeResponse) {
+        PendingTradeCard(
+            game = game,
+            phase = phase,
+            onCounter = {
+                counterTo = phase.offer
+                composing = true
+            },
+        )
+    }
+
+    // Whoever may trade is not always the player whose turn it is: a debtor can
+    // trade their way out of a bankruptcy.
+    val trader = when (phase) {
+        is GamePhase.AwaitingDebtSettlement -> phase.debtor
+        else -> state.players.getOrNull(state.currentPlayerIndex)?.id
+    }
+    val canTrade = trader != null &&
+        state.canOpenTrade(trader) &&
+        state.activePlayers.size > 1
+
+    if (canTrade) {
+        OutlinedButton(
+            onClick = {
+                counterTo = null
+                composing = true
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Propose a trade") }
+    }
+
+    if (composing) {
+        val proposer = counterTo?.to ?: trader
+        if (proposer == null) {
+            composing = false
+        } else {
+            TradeComposer(
+                game = game,
+                proposer = proposer,
+                counterTo = counterTo,
+                onDismiss = {
+                    composing = false
+                    counterTo = null
+                },
+            )
+        }
     }
 }
 
@@ -218,6 +285,14 @@ private fun PhaseActions(game: LocalGame) {
                 Text(if (phase.mayRollAgain) "Roll again (doubles)" else "End turn")
             }
         }
+
+        // The offer itself is rendered by TradeAction just below; this only says
+        // who the game is waiting on, so nobody stares at a stalled board
+        // wondering why.
+        is GamePhase.AwaitingTradeResponse -> Text(
+            "Waiting for ${state.player(phase.offer.to).name} to answer",
+            style = MaterialTheme.typography.titleMedium,
+        )
 
         is GamePhase.GameOver -> {
             val winner = phase.winner?.let { state.player(it).name } ?: "Nobody"

@@ -8,6 +8,8 @@ import com.monopoly.core.engine.applyAll
 import com.monopoly.core.engine.applyEvent
 import com.monopoly.core.model.GamePhase
 import com.monopoly.core.model.GameState
+import com.monopoly.core.model.PlayerId
+import com.monopoly.core.model.TradeBundle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -73,6 +75,17 @@ class ReplayTest {
         val after = state.applyEvent(GameEvent.ConnectionChanged(ghost, false))
         assertEquals(state.players, after.players)
         assertEquals(state.version + 1, after.version)
+    }
+
+    @Test
+    fun `the driven games really do contain trades`() {
+        // Without this, the trade branch in the driver could silently never
+        // fire and every test above would still pass — while quietly covering
+        // nothing. The claim that replay handles trades has to be checkable.
+        val start = TestGames.lobby(playerCount = 3, seed = 4242L)
+        val (_, events) = playOut(start, maxCommands = 300)
+        val trades = events.filterIsInstance<GameEvent.TradeCompleted>()
+        assertTrue(trades.isNotEmpty(), "No trade was ever made, so replay never covered one")
     }
 
     @Test
@@ -146,7 +159,14 @@ class ReplayTest {
             is GamePhase.Lobby -> Command.StartGame(state.players.first().id)
             is GamePhase.AwaitingRoll -> Command.RollDice(current)
             is GamePhase.AwaitingJailDecision -> Command.RollDice(current)
-            is GamePhase.AwaitingTurnEnd -> Command.EndTurn(current)
+
+            // Every so often, offer a property around, so that trades are
+            // covered by the replay and money-conservation checks rather than
+            // only by their own unit tests.
+            is GamePhase.AwaitingTurnEnd ->
+                tradeOffer(state, current) ?: Command.EndTurn(current)
+
+            is GamePhase.AwaitingTradeResponse -> Command.AcceptTrade(phase.offer.to)
 
             is GamePhase.AwaitingPurchase -> {
                 val price = com.monopoly.core.board.ClassicBoard
@@ -166,6 +186,39 @@ class ReplayTest {
 
             is GamePhase.GameOver -> null
         }
+    }
+
+    /**
+     * Occasionally offers a property to another player for a little cash.
+     *
+     * Only ever returns an offer the engine will accept — a rejected command is
+     * a no-op, which would stall the driver's loop and quietly shorten the game
+     * being tested. So it skips any street whose colour group has buildings on
+     * it, since those cannot be traded.
+     */
+    private fun tradeOffer(state: GameState, seller: PlayerId): Command? {
+        if (state.version % TRADE_EVERY != 0L) return null
+        val buyer = state.activePlayers.firstOrNull { it.id != seller } ?: return null
+
+        val sellable = state.deedsOf(seller).firstOrNull { deed ->
+            val street = com.monopoly.core.board.ClassicBoard.streetAt(deed.spaceIndex)
+                ?: return@firstOrNull true // railroads and utilities are never developed
+            com.monopoly.core.board.ClassicBoard.streetsByGroup
+                .getValue(street.group)
+                .none { (state.deeds[it]?.houses ?: 0) > 0 }
+        } ?: return null
+
+        return Command.ProposeTrade(
+            actor = seller,
+            recipient = buyer.id,
+            offered = TradeBundle(spaces = listOf(sellable.spaceIndex)),
+            requested = TradeBundle(cash = minOf(50, state.player(buyer.id).money)),
+        )
+    }
+
+    private companion object {
+        /** Roughly one trade every few turns, often enough to matter. */
+        const val TRADE_EVERY = 17L
     }
 
     /** Raises cash by mortgaging and selling, or goes bankrupt if it cannot. */

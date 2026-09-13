@@ -14,6 +14,8 @@ import com.monopoly.core.model.GamePhase
 import com.monopoly.core.model.GameState
 import com.monopoly.core.model.Player
 import com.monopoly.core.model.PlayerId
+import com.monopoly.core.model.TradeBundle
+import com.monopoly.core.model.TradeOffer
 
 /**
  * The rules of Monopoly, as one pure function.
@@ -57,6 +59,10 @@ object GameEngine {
             is Command.SellHouse -> sellHouse(state, command)
             is Command.MortgageProperty -> mortgage(state, command)
             is Command.UnmortgageProperty -> unmortgage(state, command)
+            is Command.ProposeTrade -> proposeTrade(state, command)
+            is Command.AcceptTrade -> acceptTrade(state, command)
+            is Command.RejectTrade -> rejectTrade(state, command)
+            is Command.CounterTrade -> counterTrade(state, command)
             is Command.SettleDebt -> settleDebt(state, command)
             is Command.DeclareBankruptcy -> declareBankruptcy(state, command)
             is Command.EndTurn -> endTurn(state, command)
@@ -759,6 +765,197 @@ object GameEngine {
         return tx.accept()
     }
 
+    // ------------------------------------------------------------------ trading
+
+    private fun proposeTrade(state: GameState, command: Command.ProposeTrade): Outcome {
+        if (!state.canOpenTrade(command.actor)) {
+            return Outcome.Rejected(
+                RejectionReason.WRONG_PHASE,
+                "Trades are proposed on your own turn, or while you owe money",
+            )
+        }
+        val offer = buildOffer(command.actor, command.recipient, command.offered, command.requested)
+            ?: return Outcome.Rejected(RejectionReason.CANNOT_TRADE_WITH_YOURSELF)
+
+        validate(state, offer)?.let { return it }
+
+        val tx = Transaction(state)
+        tx.emit(
+            GameEvent.PhaseChanged(
+                GamePhase.AwaitingTradeResponse(offer, resumePhase = state.phase),
+            ),
+        )
+        return tx.accept()
+    }
+
+    private fun counterTrade(state: GameState, command: Command.CounterTrade): Outcome {
+        val pending = state.phase as? GamePhase.AwaitingTradeResponse
+            ?: return Outcome.Rejected(RejectionReason.NO_TRADE_PENDING)
+        // Only the person being asked may counter; the proposer withdraws and
+        // proposes again instead.
+        if (pending.offer.to != command.actor) {
+            return Outcome.Rejected(RejectionReason.NOT_TRADE_RECIPIENT)
+        }
+
+        val offer = buildOffer(
+            from = command.actor,
+            to = pending.offer.from,
+            offered = command.offered,
+            requested = command.requested,
+        ) ?: return Outcome.Rejected(RejectionReason.CANNOT_TRADE_WITH_YOURSELF)
+
+        validate(state, offer)?.let { return it }
+
+        val tx = Transaction(state)
+        // The counter replaces the original but keeps the same resume point, so
+        // however long two players haggle, play returns where it left off.
+        tx.emit(
+            GameEvent.PhaseChanged(
+                GamePhase.AwaitingTradeResponse(offer, resumePhase = pending.resumePhase),
+            ),
+        )
+        return tx.accept()
+    }
+
+    private fun rejectTrade(state: GameState, command: Command.RejectTrade): Outcome {
+        val pending = state.phase as? GamePhase.AwaitingTradeResponse
+            ?: return Outcome.Rejected(RejectionReason.NO_TRADE_PENDING)
+        // Either side may call it off: the recipient declines, the proposer
+        // withdraws.
+        if (command.actor != pending.offer.to && command.actor != pending.offer.from) {
+            return Outcome.Rejected(RejectionReason.NOT_TRADE_RECIPIENT)
+        }
+
+        val tx = Transaction(state)
+        tx.emit(GameEvent.TradeRejected(pending.offer))
+        tx.emit(GameEvent.PhaseChanged(pending.resumePhase))
+        return tx.accept()
+    }
+
+    private fun acceptTrade(state: GameState, command: Command.AcceptTrade): Outcome {
+        val pending = state.phase as? GamePhase.AwaitingTradeResponse
+            ?: return Outcome.Rejected(RejectionReason.NO_TRADE_PENDING)
+        if (pending.offer.to != command.actor) {
+            return Outcome.Rejected(RejectionReason.NOT_TRADE_RECIPIENT)
+        }
+
+        // Re-checked at acceptance, not just at proposal. Between the two, the
+        // proposer may have mortgaged, built on, or spent what they promised.
+        validate(state, pending.offer)?.let { return it }
+
+        val tx = Transaction(state)
+        val offer = pending.offer
+        transfer(tx, offer.from, offer.to, offer.offered)
+        transfer(tx, offer.to, offer.from, offer.requested)
+        tx.emit(GameEvent.TradeCompleted(offer))
+        tx.emit(GameEvent.PhaseChanged(pending.resumePhase))
+        return tx.accept()
+    }
+
+    private fun buildOffer(
+        from: PlayerId,
+        to: PlayerId,
+        offered: TradeBundle,
+        requested: TradeBundle,
+    ): TradeOffer? = if (from == to) null else TradeOffer(from, to, offered, requested)
+
+    private fun transfer(
+        tx: Transaction,
+        from: PlayerId,
+        to: PlayerId,
+        bundle: TradeBundle,
+    ) {
+        if (bundle.cash > 0) {
+            tx.emit(GameEvent.MoneyTransferred(from, to, bundle.cash, MoneyReason.TRADE))
+        }
+        bundle.spaces.forEach { spaceIndex ->
+            val deed = tx.state.deeds[spaceIndex] ?: return@forEach
+            // Buildings never change hands, and the validation above has already
+            // established there are none, so the deed moves with its mortgage
+            // status and nothing else.
+            tx.emit(
+                GameEvent.DeedAssigned(
+                    spaceIndex = spaceIndex,
+                    owner = to,
+                    houses = 0,
+                    mortgaged = deed.mortgaged,
+                ),
+            )
+        }
+        bundle.jailCards.forEach { cardId ->
+            tx.emit(GameEvent.JailCardTransferred(from, to, cardId))
+        }
+    }
+
+    /**
+     * Checks that both halves of a deal can actually be delivered.
+     *
+     * Run at proposal *and* at acceptance, because the two are separated by an
+     * unbounded amount of play: the proposer can mortgage a property, build on
+     * it or spend the cash in between, and accepting a promise that can no
+     * longer be kept would create assets out of nothing.
+     */
+    private fun validate(state: GameState, offer: TradeOffer): Outcome.Rejected? {
+        if (offer.isEmpty) {
+            return Outcome.Rejected(RejectionReason.EMPTY_TRADE, "Nothing on either side")
+        }
+        val proposer = state.playerOrNull(offer.from)
+            ?: return Outcome.Rejected(RejectionReason.UNKNOWN_PLAYER)
+        val recipient = state.playerOrNull(offer.to)
+            ?: return Outcome.Rejected(RejectionReason.UNKNOWN_PLAYER)
+        if (proposer.bankrupt || recipient.bankrupt) {
+            return Outcome.Rejected(RejectionReason.PLAYER_BANKRUPT)
+        }
+
+        checkSide(state, proposer, offer.offered)?.let { return it }
+        checkSide(state, recipient, offer.requested)?.let { return it }
+        return null
+    }
+
+    private fun checkSide(state: GameState, giver: Player, bundle: TradeBundle): Outcome.Rejected? {
+        if (bundle.cash > giver.money) {
+            return Outcome.Rejected(
+                RejectionReason.TRADE_CASH_UNAVAILABLE,
+                "${giver.name} does not have $${bundle.cash}",
+            )
+        }
+
+        bundle.spaces.forEach { spaceIndex ->
+            val deed = state.deeds[spaceIndex]
+            if (deed == null || deed.owner != giver.id) {
+                return Outcome.Rejected(
+                    RejectionReason.TRADE_ASSET_UNAVAILABLE,
+                    "${giver.name} does not own ${ClassicBoard[spaceIndex].name}",
+                )
+            }
+            // A property cannot be traded out of a developed colour group. The
+            // buildings would be stranded: they belong to the group, not to the
+            // one street, so the whole group has to be sold back to the bank
+            // first. Checking the group rather than just this deed is what makes
+            // that rule real.
+            val street = ClassicBoard.streetAt(spaceIndex)
+            if (street != null) {
+                val group = ClassicBoard.streetsByGroup.getValue(street.group)
+                if (group.any { (state.deeds[it]?.houses ?: 0) > 0 }) {
+                    return Outcome.Rejected(
+                        RejectionReason.MUST_SELL_BUILDINGS_FIRST,
+                        "Sell the buildings on the ${street.group} group first",
+                    )
+                }
+            }
+        }
+
+        bundle.jailCards.forEach { cardId ->
+            if (cardId !in giver.getOutOfJailCards) {
+                return Outcome.Rejected(
+                    RejectionReason.TRADE_ASSET_UNAVAILABLE,
+                    "${giver.name} is not holding that card",
+                )
+            }
+        }
+        return null
+    }
+
     // --------------------------------------------------------------- insolvency
 
     /**
@@ -915,6 +1112,7 @@ object GameEngine {
         is GamePhase.AwaitingPurchase,
         is GamePhase.Auction,
         is GamePhase.AwaitingDebtSettlement,
+        is GamePhase.AwaitingTradeResponse,
         is GamePhase.GameOver,
         -> true
 

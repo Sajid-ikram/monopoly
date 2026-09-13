@@ -72,8 +72,8 @@ ends can be trusted to agree.
 Movement, GO salary, rent for streets, railroads and utilities, colour-group
 rent doubling, houses and hotels with even-build enforcement and a finite bank
 supply, mortgaging at half price and lifting at 10% interest, both card decks
-with all 32 cards, jail in all four of its exits, property auctions, debt
-settlement, and bankruptcy to either a player or the bank.
+with all 32 cards, jail in all four of its exits, property auctions, trading
+between players, debt settlement, and bankruptcy to either a player or the bank.
 
 House rules are configuration, not forks — auctions, the Free Parking jackpot,
 even-build, jail fine and turn limits, and starting cash are all settings that
@@ -85,7 +85,7 @@ host about what game it is in.
 Requires JDK 17+ (Android Studio's bundled JBR works) and the Android SDK.
 
 ```bash
-./gradlew :core:test :protocol:test :server:test   # all 103 tests
+./gradlew :core:test :protocol:test :server:test   # all 124 tests
 ./gradlew :app:assembleDebug                       # the Android app
 ./gradlew :server:run                              # the game server on :8080
 ```
@@ -112,7 +112,7 @@ use to join:
 - [x] Ktor WebSocket server with a per-game event log
 - [x] Board UI and the full turn flow, playable hot-seat on one device
 - [ ] Client session: connect, resume, sequence tracking, command retry
-- [ ] Player-to-player trading
+- [x] Player-to-player trading, including counter-offers
 - [ ] Turn timers and a policy for a player who never reconnects
 - [ ] Persist the event log so a server restart does not end games in progress
 

@@ -117,6 +117,20 @@ fun GameState.applyEvent(event: GameEvent): GameState {
                 it.copy(getOutOfJailCards = it.getOutOfJailCards - event.cardId)
             }
 
+        is GameEvent.JailCardTransferred ->
+            updatePlayer(event.from) { it.copy(getOutOfJailCards = it.getOutOfJailCards - event.cardId) }
+                .updatePlayer(event.to) { holder ->
+                    // Guard against a double-add if this event is ever replayed
+                    // on a state that already has it.
+                    if (event.cardId in holder.getOutOfJailCards) holder
+                    else holder.copy(getOutOfJailCards = holder.getOutOfJailCards + event.cardId)
+                }
+
+        // Both are records for the activity log. The cash and deeds move through
+        // their own events, so there is nothing to apply here.
+        is GameEvent.TradeCompleted -> this
+        is GameEvent.TradeRejected -> this
+
         is GameEvent.TurnStateChanged -> copy(turn = event.turn)
 
         is GameEvent.TurnAdvanced -> copy(
