@@ -31,3 +31,7 @@ include(":protocol")
 
 // Android client.
 include(":app")
+
+// JVM game server. Depends only on :core and :protocol, so it runs the same
+// rules the clients do.
+include(":server")

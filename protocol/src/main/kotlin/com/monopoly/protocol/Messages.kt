@@ -35,6 +35,21 @@ data class SequencedEvent(
 sealed interface ClientMessage {
 
     /**
+     * Opens a new game and takes the host seat in it.
+     *
+     * The server picks the game code, because a client-chosen code could
+     * collide with a live game and drop two groups of friends into the same
+     * lobby.
+     */
+    @Serializable
+    data class CreateGame(
+        val protocolVersion: Int = PROTOCOL_VERSION,
+        val displayName: String,
+        val preferredToken: Token? = null,
+        val rules: GameRules = GameRules.CLASSIC,
+    ) : ClientMessage
+
+    /**
      * Opens a session.
      *
      * [resumeToken] is issued on first join and stored on the device. Presenting
@@ -83,10 +98,6 @@ sealed interface ClientMessage {
     @Serializable
     data object RequestSnapshot : ClientMessage
 
-    /** Host-only: change the rules while still in the lobby. */
-    @Serializable
-    data class UpdateRules(val rules: GameRules) : ClientMessage
-
     /** A deliberate exit, as opposed to a dropped connection. */
     @Serializable
     data object Leave : ClientMessage
@@ -105,6 +116,8 @@ sealed interface ServerMessage {
     @Serializable
     data class Welcome(
         val protocolVersion: Int = PROTOCOL_VERSION,
+        /** Share this with the other players; it is how they find the game. */
+        val gameCode: String,
         val playerId: PlayerId,
         /** Store this. It is what makes the next reconnect seamless. */
         val resumeToken: String,

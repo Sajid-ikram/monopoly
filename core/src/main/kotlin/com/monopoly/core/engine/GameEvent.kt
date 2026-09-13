@@ -2,8 +2,11 @@ package com.monopoly.core.engine
 
 import com.monopoly.core.model.CardDeck
 import com.monopoly.core.model.GamePhase
+import com.monopoly.core.model.Player
 import com.monopoly.core.model.PlayerId
+import com.monopoly.core.model.Token
 import com.monopoly.core.model.TurnState
+import com.monopoly.core.rules.GameRules
 import kotlinx.serialization.Serializable
 
 /** Which pile a card came from. */
@@ -46,6 +49,20 @@ enum class JailRelease { PAID_FINE, USED_CARD, ROLLED_DOUBLES, SERVED_TIME }
  */
 @Serializable
 sealed interface GameEvent {
+
+    /** A player took a seat in the lobby, with their cash already dealt. */
+    @Serializable
+    data class PlayerJoined(val player: Player) : GameEvent
+
+    /** A player gave up their lobby seat. Only ever happens before the game starts. */
+    @Serializable
+    data class PlayerLeft(val player: PlayerId) : GameEvent
+
+    @Serializable
+    data class RulesChanged(val rules: GameRules) : GameEvent
+
+    @Serializable
+    data class TokenChanged(val player: PlayerId, val token: Token) : GameEvent
 
     @Serializable
     data class GameStarted(val seatOrder: List<PlayerId>, val rngState: Long) : GameEvent

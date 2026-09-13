@@ -33,7 +33,7 @@ class GameEngineTest {
     @Test
     fun `only the host can start, and only with enough players`() {
         val lobby = TestGames.lobby(playerCount = 2)
-        assertEquals(RejectionReason.NOT_YOUR_TURN, lobby.reject(Command.StartGame(TestGames.BOB)).reason)
+        assertEquals(RejectionReason.NOT_HOST, lobby.reject(Command.StartGame(TestGames.BOB)).reason)
 
         val solo = TestGames.lobby(playerCount = 1)
         assertEquals(

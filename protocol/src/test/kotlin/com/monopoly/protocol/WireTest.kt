@@ -59,6 +59,7 @@ class WireTest {
     @Test
     fun `every client message round trips`() {
         val messages = listOf(
+            ClientMessage.CreateGame(displayName = "Alice", preferredToken = Token.TOP_HAT),
             ClientMessage.Join(gameCode = "ABCD", displayName = "Alice", preferredToken = Token.CAT),
             ClientMessage.Join(gameCode = "ABCD", displayName = "Alice", resumeToken = "tok", lastSequence = 42),
             ClientMessage.Submit("cmd-1", Command.RollDice(PlayerId("alice"))),
@@ -77,6 +78,7 @@ class WireTest {
         val state = freshGame()
         val messages = listOf(
             ServerMessage.Welcome(
+                gameCode = "KZJQ",
                 playerId = PlayerId("alice"),
                 resumeToken = "tok",
                 state = state,

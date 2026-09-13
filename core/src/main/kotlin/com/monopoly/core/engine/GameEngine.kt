@@ -12,6 +12,7 @@ import com.monopoly.core.model.ClassicCards
 import com.monopoly.core.model.Deed
 import com.monopoly.core.model.GamePhase
 import com.monopoly.core.model.GameState
+import com.monopoly.core.model.Player
 import com.monopoly.core.model.PlayerId
 
 /**
@@ -31,11 +32,19 @@ import com.monopoly.core.model.PlayerId
 object GameEngine {
 
     fun reduce(state: GameState, command: Command): Outcome {
+        // Joining is the one command whose actor is not a player yet, so it is
+        // dispatched before the "who are you" check below.
+        if (command is Command.JoinGame) return joinGame(state, command)
+
         val actor = state.playerOrNull(command.actor)
             ?: return Outcome.Rejected(RejectionReason.UNKNOWN_PLAYER)
         if (actor.bankrupt) return Outcome.Rejected(RejectionReason.PLAYER_BANKRUPT)
 
         return when (command) {
+            is Command.JoinGame -> error("Handled above")
+            is Command.LeaveLobby -> leaveLobby(state, command)
+            is Command.SetRules -> setRules(state, command)
+            is Command.ChangeToken -> changeToken(state, command)
             is Command.StartGame -> startGame(state, command)
             is Command.RollDice -> rollDice(state, command)
             is Command.BuyProperty -> buyProperty(state, command)
@@ -54,6 +63,99 @@ object GameEngine {
         }
     }
 
+    // -------------------------------------------------------------------- lobby
+
+    private fun joinGame(state: GameState, command: Command.JoinGame): Outcome {
+        if (state.phase != GamePhase.Lobby) {
+            return Outcome.Rejected(RejectionReason.WRONG_PHASE, "The game has already started")
+        }
+        // Idempotent by design: a client that retries a join after a dropped
+        // reply must not end up occupying two seats.
+        if (state.playerOrNull(command.actor) != null) {
+            return Outcome.Rejected(RejectionReason.ALREADY_JOINED)
+        }
+        if (state.players.size >= state.rules.maxPlayers) {
+            return Outcome.Rejected(RejectionReason.GAME_FULL)
+        }
+        if (state.players.any { it.name.equals(command.displayName, ignoreCase = true) }) {
+            return Outcome.Rejected(RejectionReason.NAME_TAKEN)
+        }
+        if (state.players.any { it.token == command.token }) {
+            return Outcome.Rejected(RejectionReason.TOKEN_TAKEN)
+        }
+
+        val tx = Transaction(state)
+        tx.emit(
+            GameEvent.PlayerJoined(
+                Player(
+                    id = command.actor,
+                    name = command.displayName,
+                    token = command.token,
+                    money = state.rules.startingMoney,
+                ),
+            ),
+        )
+        return tx.accept()
+    }
+
+    private fun leaveLobby(state: GameState, command: Command.LeaveLobby): Outcome {
+        if (state.phase != GamePhase.Lobby) {
+            return Outcome.Rejected(RejectionReason.WRONG_PHASE, "Leaving mid-game is a disconnect")
+        }
+        // The host holds seat zero, so when they leave the next player inherits
+        // it. An empty game has no representation, so the last seat cannot go.
+        if (state.players.size <= 1) {
+            return Outcome.Rejected(RejectionReason.LAST_PLAYER_CANNOT_LEAVE)
+        }
+
+        val tx = Transaction(state)
+        tx.emit(GameEvent.PlayerLeft(command.actor))
+        return tx.accept()
+    }
+
+    private fun setRules(state: GameState, command: Command.SetRules): Outcome {
+        if (state.phase != GamePhase.Lobby) return Outcome.Rejected(RejectionReason.WRONG_PHASE)
+        if (state.players.first().id != command.actor) {
+            return Outcome.Rejected(RejectionReason.NOT_HOST)
+        }
+        if (state.players.size > command.rules.maxPlayers) {
+            return Outcome.Rejected(
+                RejectionReason.GAME_FULL,
+                "${state.players.size} players already seated",
+            )
+        }
+
+        val tx = Transaction(state)
+        tx.emit(GameEvent.RulesChanged(command.rules))
+        // Starting cash is dealt on join, so a change to it has to reach the
+        // players already sitting down or the lobby would deal unequal stacks.
+        if (command.rules.startingMoney != state.rules.startingMoney) {
+            state.players.forEach { player ->
+                val delta = command.rules.startingMoney - player.money
+                when {
+                    delta > 0 -> tx.emit(
+                        GameEvent.MoneyTransferred(null, player.id, delta, MoneyReason.STARTING_CASH),
+                    )
+                    delta < 0 -> tx.emit(
+                        GameEvent.MoneyTransferred(player.id, null, -delta, MoneyReason.STARTING_CASH),
+                    )
+                }
+            }
+        }
+        return tx.accept()
+    }
+
+    private fun changeToken(state: GameState, command: Command.ChangeToken): Outcome {
+        if (state.phase != GamePhase.Lobby) return Outcome.Rejected(RejectionReason.WRONG_PHASE)
+        if (state.players.any { it.id != command.actor && it.token == command.token }) {
+            return Outcome.Rejected(RejectionReason.TOKEN_TAKEN)
+        }
+
+        val tx = Transaction(state)
+        tx.emit(GameEvent.TokenChanged(command.actor, command.token))
+        return tx.accept()
+    }
+
     // ---------------------------------------------------------------- lifecycle
 
     private fun startGame(state: GameState, command: Command.StartGame): Outcome {
@@ -62,7 +164,7 @@ object GameEngine {
         }
         // The host holds the first seat, and only the host may start.
         if (state.players.first().id != command.actor) {
-            return Outcome.Rejected(RejectionReason.NOT_YOUR_TURN)
+            return Outcome.Rejected(RejectionReason.NOT_HOST)
         }
         if (state.players.size < state.rules.minPlayers) {
             return Outcome.Rejected(

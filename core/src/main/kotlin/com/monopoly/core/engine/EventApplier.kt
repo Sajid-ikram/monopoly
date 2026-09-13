@@ -26,6 +26,27 @@ import com.monopoly.core.model.TurnState
 fun GameState.applyEvent(event: GameEvent): GameState {
     val next = when (event) {
 
+        is GameEvent.PlayerJoined ->
+            // Re-joining is a no-op rather than a duplicate seat, so a retried
+            // join cannot put the same person on the board twice.
+            if (players.any { it.id == event.player.id }) this
+            else copy(players = players + event.player)
+
+        is GameEvent.PlayerLeft -> {
+            val remaining = players.filterNot { it.id == event.player }
+            // A game with no players cannot be represented, so the last seat
+            // never leaves; the server tears the session down instead.
+            if (remaining.isEmpty()) this
+            else copy(
+                players = remaining,
+                currentPlayerIndex = currentPlayerIndex.coerceAtMost(remaining.size - 1),
+            )
+        }
+
+        is GameEvent.RulesChanged -> copy(rules = event.rules)
+
+        is GameEvent.TokenChanged -> updatePlayer(event.player) { it.copy(token = event.token) }
+
         is GameEvent.GameStarted -> {
             val seated = event.seatOrder.mapNotNull { id -> players.firstOrNull { it.id == id } }
             copy(

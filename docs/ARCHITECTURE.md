@@ -113,13 +113,59 @@ Similarly, declining a property opens an auction by default. The official rules
 have always said so; most implementations skip it, and skipping it noticeably
 changes the economy of the game.
 
+## The server
+
+`:server` is a referee, not a second implementation of Monopoly. It decides
+*whether* a command may run and *when*; what it does is the engine's business.
+
+**`GameSession`** owns one game. Every mutation runs under a single mutex, which
+is what turns concurrent players into one total order — and that order is
+exactly what the sequence numbers describe. Two players acting at the same
+moment cannot interleave; one simply runs second and may find their command no
+longer legal, which is the correct outcome rather than a race.
+
+It holds four things: the authoritative `GameState`, the event log, a sequence
+counter, and a map of command ids it has already answered.
+
+That last one is what makes retrying safe. A client whose reply was lost resends
+the same command id; the session returns the original answer rather than running
+anything again. Without it a flaky connection could pay rent twice — and, just
+as bad, a successful action could come back to the player as a confusing
+rejection ("you already started the game").
+
+**Identity is never taken from the message.** A command carries its actor for
+the engine's benefit, but the session checks it against the socket's own
+authenticated seat and rejects any mismatch. Possessing a resume token *is*
+being that player, so tokens are 24 random bytes from a `SecureRandom` — a
+guessable one would let a stranger take over a seat mid-game.
+
+**Back-pressure is per-connection.** Each socket has its own bounded outbound
+queue and its own writer coroutine, and broadcasting uses `trySend`, so it never
+suspends. One player on a slow train cannot stall the turn for everyone else. If
+a client's buffer fills, messages are dropped and the connection is flagged —
+which is safe rather than lossy, because sequence numbers mean the client
+notices the gap on the next message it receives and asks for a snapshot. Losing
+a batch costs one round trip; blocking the game costs everybody.
+
+**Seats outlive sockets.** Reattaching replaces an existing connection instead of
+refusing it: a phone that lost signal leaves a socket the server has not yet
+noticed is dead, and a returning player must not be locked out of their own game
+waiting for a TCP timeout. Detaching only acts if the channel given is still the
+live one, so a late close arriving after a reconnect cannot knock the new
+connection offline.
+
+Games live in memory, so a server restart loses those in flight. That is a
+deliberate first step rather than an oversight: the event log is already the
+right shape to persist, so durability is a matter of writing it somewhere rather
+than restructuring anything.
+
 ## Module boundaries
 
 ```
 :core      →  kotlinx-serialization only
 :protocol  →  :core
+:server    →  :core, :protocol, Ktor
 :app       →  :core, :protocol, Android
-(:server)  →  :core, :protocol, Ktor          [not built yet]
 ```
 
 `:core` and `:protocol` are plain JVM modules, not Android libraries, and this
@@ -138,5 +184,12 @@ is the entire reason the client and server can be trusted to agree.
 - `ReplayTest` — the load-bearing one. Plays whole games, then asserts that
   folding the event log reproduces the computed state exactly. Also checks that
   money is conserved except where the bank creates or destroys it.
+- `LobbyTest` — joining, leaving and rule changes, which run through the same
+  command/event pipeline as the game so that reconnecting during setup works
+  identically to reconnecting mid-game.
 - `WireTest` — round-trips every message, and confirms an event batch still
   replays correctly after a trip through JSON.
+- `GameSessionTest` — the connection guarantees: that a retried command is not
+  applied twice, that a rejected one consumes no sequence numbers, that a client
+  cannot act as somebody else, that a small gap replays and a large one gets a
+  snapshot, and that a seat survives its socket.

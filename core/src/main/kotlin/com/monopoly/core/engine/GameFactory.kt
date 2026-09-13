@@ -21,6 +21,20 @@ data class Seat(val id: PlayerId, val name: String, val token: Token)
  */
 object GameFactory {
 
+    /**
+     * Opens an empty lobby holding only the host.
+     *
+     * Everyone else arrives through [com.monopoly.core.engine.Command.JoinGame],
+     * so the lobby fills up through the same event stream the game itself uses
+     * and a client that reconnects during setup recovers identically.
+     */
+    fun newLobby(
+        gameId: String,
+        host: Seat,
+        rules: GameRules = GameRules.CLASSIC,
+        seed: Long,
+    ): GameState = newGame(gameId, listOf(host), rules, seed)
+
     fun newGame(
         gameId: String,
         seats: List<Seat>,

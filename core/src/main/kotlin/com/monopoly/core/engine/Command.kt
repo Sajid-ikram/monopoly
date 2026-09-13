@@ -2,6 +2,8 @@ package com.monopoly.core.engine
 
 import com.monopoly.core.model.GameState
 import com.monopoly.core.model.PlayerId
+import com.monopoly.core.model.Token
+import com.monopoly.core.rules.GameRules
 import kotlinx.serialization.Serializable
 
 /**
@@ -19,6 +21,36 @@ import kotlinx.serialization.Serializable
 @Serializable
 sealed interface Command {
     val actor: PlayerId
+
+    /**
+     * Takes a seat in the lobby. The server assigns [actor] before running this,
+     * so it is the one command whose actor is not yet a player in the game.
+     *
+     * Joining goes through the engine like everything else rather than being
+     * handled off to the side by the server, so that the lobby replicates by
+     * the same mechanism as the game and a client that reconnects during setup
+     * recovers exactly the way it would mid-game.
+     */
+    @Serializable
+    data class JoinGame(
+        override val actor: PlayerId,
+        val displayName: String,
+        val token: Token,
+    ) : Command
+
+    /**
+     * Gives up a lobby seat. Leaving a game already in progress is a
+     * disconnection, not this: that seat and its assets are held.
+     */
+    @Serializable
+    data class LeaveLobby(override val actor: PlayerId) : Command
+
+    /** Host-only, lobby-only: set the house rules everyone will play by. */
+    @Serializable
+    data class SetRules(override val actor: PlayerId, val rules: GameRules) : Command
+
+    @Serializable
+    data class ChangeToken(override val actor: PlayerId, val token: Token) : Command
 
     /** Host begins the game; seat order is fixed at this point. */
     @Serializable
@@ -78,6 +110,12 @@ enum class RejectionReason {
     UNKNOWN_PLAYER,
     PLAYER_BANKRUPT,
     NOT_ENOUGH_PLAYERS,
+    GAME_FULL,
+    ALREADY_JOINED,
+    NAME_TAKEN,
+    TOKEN_TAKEN,
+    NOT_HOST,
+    LAST_PLAYER_CANNOT_LEAVE,
     INSUFFICIENT_FUNDS,
     NOT_PURCHASABLE,
     ALREADY_OWNED,
