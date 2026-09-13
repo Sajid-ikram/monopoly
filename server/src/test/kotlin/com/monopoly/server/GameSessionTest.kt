@@ -35,7 +35,7 @@ class GameSessionTest {
             rules = GameRules.CLASSIC,
             seed = 42L,
         )
-        return GameSession("TEST", state, now)
+        return GameSession("TEST", state, now = now)
     }
 
     /** A session with two players seated, still in the lobby. */
@@ -54,7 +54,7 @@ class GameSessionTest {
     // ----------------------------------------------------------- deduplication
 
     @Test
-    fun `a retried command returns the original result instead of running again`() = runBlocking {
+    fun `a retried command returns the original result instead of running again`() = runBlocking<Unit> {
         val session = seatedSession()
 
         val first = session.submit(host, "start-1", Command.StartGame(host))
@@ -68,7 +68,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `a retried command does not move money twice`() = runBlocking {
+    fun `a retried command does not move money twice`() = runBlocking<Unit> {
         val session = seatedSession()
         session.submit(host, "start", Command.StartGame(host))
 
@@ -88,7 +88,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `a rejection is remembered too, so a retry is answered consistently`() = runBlocking {
+    fun `a rejection is remembered too, so a retry is answered consistently`() = runBlocking<Unit> {
         val session = seatedSession()
         // The guest is not the host, so starting is refused.
         val first = session.submit(guest, "bad-1", Command.StartGame(guest))
@@ -100,7 +100,7 @@ class GameSessionTest {
     // ------------------------------------------------------------------ spoofing
 
     @Test
-    fun `a client cannot issue a command as somebody else`() = runBlocking {
+    fun `a client cannot issue a command as somebody else`() = runBlocking<Unit> {
         val session = seatedSession()
         // The guest's socket, claiming to be the host, trying to start the game.
         val outcome = session.submit(guest, "spoof-1", Command.StartGame(host))
@@ -113,7 +113,7 @@ class GameSessionTest {
     // ----------------------------------------------------------------- sequencing
 
     @Test
-    fun `sequence numbers are contiguous and start at one`() = runBlocking {
+    fun `sequence numbers are contiguous and start at one`() = runBlocking<Unit> {
         val session = newSession()
         session.enrol(host, "tok")
         assertEquals(0, session.sequenceNumber())
@@ -125,7 +125,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `every accepted command advances the sequence by its event count`() = runBlocking {
+    fun `every accepted command advances the sequence by its event count`() = runBlocking<Unit> {
         val session = seatedSession()
         val before = session.sequenceNumber()
         val outcome = session.submit(host, "start", Command.StartGame(host))
@@ -135,7 +135,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `a rejected command consumes no sequence numbers`() = runBlocking {
+    fun `a rejected command consumes no sequence numbers`() = runBlocking<Unit> {
         val session = seatedSession()
         val before = session.sequenceNumber()
         session.submit(guest, "bad", Command.StartGame(guest))
@@ -145,7 +145,7 @@ class GameSessionTest {
     // ------------------------------------------------------------- catching up
 
     @Test
-    fun `a client that is already current is told there is nothing to do`() = runBlocking {
+    fun `a client that is already current is told there is nothing to do`() = runBlocking<Unit> {
         val session = seatedSession()
         val message = session.catchUp(session.sequenceNumber())
         assertIs<ServerMessage.Events>(message)
@@ -153,7 +153,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `a small gap is filled by replaying exactly the missing events`() = runBlocking {
+    fun `a small gap is filled by replaying exactly the missing events`() = runBlocking<Unit> {
         val session = seatedSession()
         val mark = session.sequenceNumber()
         session.submit(host, "start", Command.StartGame(host))
@@ -168,7 +168,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `a client far behind gets a snapshot rather than a huge replay`() = runBlocking {
+    fun `a client far behind gets a snapshot rather than a huge replay`() = runBlocking<Unit> {
         val session = seatedSession()
         session.submit(host, "start", Command.StartGame(host))
 
@@ -187,7 +187,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `a client claiming to be ahead of the server is resynced, not trusted`() = runBlocking {
+    fun `a client claiming to be ahead of the server is resynced, not trusted`() = runBlocking<Unit> {
         val session = seatedSession()
         // Nonsense input, whether from a bug or someone poking at the protocol.
         val message = session.catchUp(session.sequenceNumber() + 500)
@@ -197,7 +197,7 @@ class GameSessionTest {
     // ------------------------------------------------------------- connections
 
     @Test
-    fun `events reach every connected player`() = runBlocking {
+    fun `events reach every connected player`() = runBlocking<Unit> {
         val session = seatedSession()
         val hostChannel = ClientChannel()
         val guestChannel = ClientChannel()
@@ -213,7 +213,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `reconnecting replaces the old socket rather than being refused`() = runBlocking {
+    fun `reconnecting replaces the old socket rather than being refused`() = runBlocking<Unit> {
         val session = seatedSession()
         val stale = ClientChannel()
         session.attach(host, stale)
@@ -228,7 +228,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `a late close from a replaced socket does not disconnect the new one`() = runBlocking {
+    fun `a late close from a replaced socket does not disconnect the new one`() = runBlocking<Unit> {
         val session = seatedSession()
         val stale = ClientChannel()
         session.attach(host, stale)
@@ -243,7 +243,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `a seat survives its connection going away`() = runBlocking {
+    fun `a seat survives its connection going away`() = runBlocking<Unit> {
         val session = seatedSession()
         val channel = ClientChannel()
         session.attach(host, channel)
@@ -254,7 +254,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `a resume token identifies its seat and nothing else`() = runBlocking {
+    fun `a resume token identifies its seat and nothing else`() = runBlocking<Unit> {
         val session = seatedSession()
         assertEquals(host, session.seatFor("host-token"))
         assertEquals(guest, session.seatFor("guest-token"))
@@ -264,7 +264,7 @@ class GameSessionTest {
     // --------------------------------------------------------------- reclaiming
 
     @Test
-    fun `a game is only abandoned after nobody has connected for the full window`() = runBlocking {
+    fun `a game is only abandoned after nobody has connected for the full window`() = runBlocking<Unit> {
         var clock = 0L
         val session = newSession { clock }
         session.enrol(host, "tok")
@@ -284,7 +284,7 @@ class GameSessionTest {
     // ------------------------------------------------------------ server events
 
     @Test
-    fun `server-originated events are sequenced and broadcast like any other`() = runBlocking {
+    fun `server-originated events are sequenced and broadcast like any other`() = runBlocking<Unit> {
         val session = seatedSession()
         val channel = ClientChannel()
         session.attach(guest, channel)
@@ -303,7 +303,7 @@ class GameSessionTest {
     }
 
     @Test
-    fun `a snapshot reports the state and the sequence it belongs to`() = runBlocking {
+    fun `a snapshot reports the state and the sequence it belongs to`() = runBlocking<Unit> {
         val session = seatedSession()
         session.submit(host, "start", Command.StartGame(host))
 

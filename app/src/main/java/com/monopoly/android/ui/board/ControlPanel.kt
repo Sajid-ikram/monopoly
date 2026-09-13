@@ -59,6 +59,10 @@ fun ControlPanel(game: GameHolder, modifier: Modifier = Modifier) {
     ) {
         PlayerRoster(state)
 
+        game.you?.let { you ->
+            if (state.playerOrNull(you)?.bankrupt == true) KnockedOutNotice(state)
+        }
+
         game.lastRejection?.let { reason ->
             RejectionNotice(reason.readable()) { game.dismissRejection() }
         }
@@ -168,11 +172,20 @@ private fun PlayerRoster(state: GameState) {
                 Text(
                     text = player.name + when {
                         player.bankrupt -> " — bankrupt"
+                        // Said before "in jail" because it is the one that
+                        // explains why the game is about to move without them.
+                        !player.connected -> " — away"
                         player.inJail -> " — in jail"
                         else -> ""
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (isTurn) FontWeight.Bold else FontWeight.Normal,
+                    // Someone who is not there reads as not there.
+                    color = if (player.connected) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     modifier = Modifier.weight(1f),
                 )
                 // Counting rather than jumping. It is the difference between
@@ -201,10 +214,10 @@ private fun PhaseActions(game: GameHolder) {
     when (val phase = state.phase) {
         is GamePhase.Lobby -> {
             Text("Waiting to start", style = MaterialTheme.typography.titleMedium)
-            val host = state.players.first()
-            if (game.controls(host.id)) {
+            val host = state.hostId
+            if (host != null && game.controls(host)) {
                 Button(
-                    onClick = { game.dispatch(Command.StartGame(host.id)) },
+                    onClick = { game.dispatch(Command.StartGame(host)) },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Start game") }
             }
@@ -318,10 +331,100 @@ private fun PhaseActions(game: GameHolder) {
             style = MaterialTheme.typography.titleMedium,
         )
 
-        is GamePhase.GameOver -> {
-            val winner = phase.winner?.let { state.player(it).name } ?: "Nobody"
-            Text("$winner wins", style = MaterialTheme.typography.headlineSmall)
+        is GamePhase.GameOver -> GameOverCard(game, phase)
+    }
+}
+
+/**
+ * The end of the game, which is a moment rather than a line of text.
+ *
+ * Final standings matter even to the people who lost — "how close was it"
+ * is the first thing anyone asks — so everybody is listed with what they were
+ * worth, in order, rather than just naming the winner and stopping.
+ */
+@Composable
+private fun GameOverCard(game: GameHolder, phase: GamePhase.GameOver) {
+    val state = game.state
+    val standings = state.players.sortedWith(
+        // The winner first even if a bankrupt player somehow ended up richer on
+        // paper, then by what everyone was actually worth.
+        compareByDescending<Player> { it.id == phase.winner }
+            .thenByDescending { state.netWorth(it.id) },
+    )
+
+    Text(
+        phase.winner?.let { "${state.player(it).name} wins" } ?: "Nobody wins",
+        style = MaterialTheme.typography.headlineSmall,
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        standings.forEachIndexed { place, player ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "${place + 1}.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    player.name + if (player.bankrupt) " — bankrupt" else "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (player.id == phase.winner) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "£${state.netWorth(player.id)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
+    }
+
+    val host = state.hostId
+    if (host != null && game.controls(host)) {
+        Button(
+            onClick = { game.dispatch(Command.Rematch(host)) },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Play again") }
+        Text(
+            "Same code, same people, clean board.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else {
+        Text(
+            "Waiting for ${host?.let { state.playerOrNull(it)?.name } ?: "the host"} " +
+                "to start another game.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * What a player who is out of the game sees.
+ *
+ * Being knocked out is not the same as being ejected: you keep watching, and
+ * you are dealt back in on a rematch. Saying so beats a board that simply stops
+ * responding to you with no explanation.
+ */
+@Composable
+private fun KnockedOutNotice(state: GameState) {
+    if (state.phase is GamePhase.GameOver) return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(6.dp))
+            .padding(10.dp),
+    ) {
+        Text(
+            "You are out of this game. You can watch it finish, and you will be " +
+                "dealt back in if there is another.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 

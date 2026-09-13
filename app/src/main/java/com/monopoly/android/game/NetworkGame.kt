@@ -112,9 +112,14 @@ class NetworkGame(
      */
     private val pending = LinkedHashMap<String, ClientMessage.Submit>()
 
-    /** The host is the first seat, which is the one that may start the game. */
+    /**
+     * Whether this device opened the game, and so may start it or deal again.
+     *
+     * Asks the state rather than assuming the first seat: starting a game
+     * shuffles the seats, after which the first one is simply whoever drew it.
+     */
     val isHost: Boolean
-        get() = stateOrNull?.players?.firstOrNull()?.id == seat?.playerId
+        get() = stateOrNull?.hostId != null && stateOrNull?.hostId == seat?.playerId
 
     fun connect(scope: CoroutineScope) {
         connection.start(scope)

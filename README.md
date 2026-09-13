@@ -79,6 +79,11 @@ Start the server on a machine everyone can reach:
 ./gradlew :server:run
 ```
 
+Games are written to `data/games` as they happen, so stopping the server
+interrupts them rather than ending them — everyone reconnects and carries on.
+Set `GAME_DATA_DIR` to put them somewhere else; on a container that must be a
+mounted volume, since a directory inside the image is not durable.
+
 Then in the app, under **Server settings**, point it at that machine. The
 default `ws://10.0.2.2:8080/play` is how an emulator reaches the computer it is
 running on; a real phone needs the host's address on your network, something
@@ -139,8 +144,9 @@ use to join:
 - [x] Client session: connect, resume, sequence tracking, command retry
 - [x] Lobby: host a game, share the code, friends join by typing it
 - [x] Player-to-player trading, including counter-offers
-- [ ] Turn timers and a policy for a player who never reconnects
-- [ ] Persist the event log so a server restart does not end games in progress
+- [x] A turn timer, so a seat nobody is in cannot stop the game
+- [x] Persist the event log, so a server restart interrupts games rather than ending them
+- [x] A proper end of game: final standings, and a rematch on the same code
 - [ ] A hosted server, so nobody has to run one
 
 ## Licence

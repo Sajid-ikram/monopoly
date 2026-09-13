@@ -159,6 +159,51 @@ deliberate first step rather than an oversight: the event log is already the
 right shape to persist, so durability is a matter of writing it somewhere rather
 than restructuring anything.
 
+
+## Durability
+
+The event log was always the authoritative account of a game, so persisting it
+is a matter of writing it down rather than designing anything: one JSON Lines
+file per game, appended and flushed as events happen.
+
+Two things go in the file that are not events. The seed, because the opening
+state is derived from it; and each seat's resume token, because a token is a
+server-side secret that deliberately never appears in the stream clients see.
+Without them the events would rebuild a game nobody could get back into.
+
+A record is written **before** it is broadcast, so there is no window in which a
+player has seen something the server would forget on a restart. A half-written
+final line — what a process killed mid-append leaves behind — costs that one
+line and not the file.
+
+What this does not do is remember which commands have already been answered. A
+client that retries an unacknowledged command across a restart will have it run
+again. That is safe in practice rather than by construction: every command names
+its actor and every phase names whose input it is waiting for, so a repeat
+arrives to find the game has moved past it and is rejected.
+
+## The player who never comes back
+
+A seat nobody is sitting in must not be able to stop the game. After a minute
+with no socket attached, the server plays one move at a time for whoever the
+game is waiting on.
+
+Only a *disconnected* player is ever played for. Someone looking at the board
+and thinking is not holding the game up in a way software should fix, and taking
+their turn from under them would be worse than waiting. That makes the rule easy
+to state: the game moves on only when there is nobody there to move it.
+
+Every stand-in move is the one that costs the absent player least — decline
+rather than buy, fold rather than bid, refuse rather than accept. They should
+come back to a game that carried on without them, not to one that spent their
+money on their behalf.
+
+The exception is a debt, because the game cannot continue until it is settled
+and somebody has to choose what to give up. The order is the one a player would
+use: cash, then buildings, then mortgages, and bankruptcy only when there is
+genuinely nothing left — which is also the only point at which the engine
+accepts it.
+
 ## Module boundaries
 
 ```
@@ -235,3 +280,19 @@ the same thing itself against the seat the socket authenticated as.
   applied twice, that a rejected one consumes no sequence numbers, that a client
   cannot act as somebody else, that a small gap replays and a large one gets a
   snapshot, and that a seat survives its socket.
+- `RematchTest` — dealing again with the same people, including that the host
+  keeps the role across the shuffle that starts a game. That last one is not
+  hypothetical: the client assumed "host = first seat" and was wrong the moment
+  play began.
+- `PersistenceTest` — a game survives a restart with its sequence, its seats and
+  its resume tokens; a corrupt file is skipped rather than fatal.
+- `AbsentPlayerTest` — that an absent player is given time, is then played for,
+  is never made to buy or accept anything, and that a connected player is never
+  played for however long they take.
+
+A note on the test suite itself: a Kotlin test whose last expression returns a
+value (`assertIs`, `assertNotNull`) compiles to a non-void method, which JUnit
+silently does not discover. Three tests had been passing that way — which is to
+say not running at all — until the counts were compared against the declared
+`@Test` methods. Every coroutine test is now `runBlocking<Unit>` for that
+reason, and the declared-versus-executed count is worth checking in CI.

@@ -20,17 +20,38 @@ data class HostedGame(
 /**
  * All games currently in memory, addressed by their short code.
  *
- * Everything here is in-process: restarting the server loses every game in
- * flight. That is a deliberate first step, not an oversight — the event log is
- * already the right shape to persist, so adding durability later is a matter of
- * writing it somewhere rather than restructuring anything.
+ * Games are held here and written through to [store] as they happen, so a
+ * server restart interrupts them rather than ending them: [restore] reads them
+ * back and everyone's resume token still works. With [GameStore.None] the
+ * behaviour is the old one — everything lives and dies with the process.
  */
 class GameRegistry(
+    private val store: GameStore = GameStore.None,
     private val random: SecureRandom = SecureRandom(),
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val mutex = Mutex()
     private val games = HashMap<String, GameSession>()
+
+    /**
+     * Reads back every game that was in progress when the server last stopped.
+     *
+     * @return how many games came back.
+     */
+    suspend fun restore(): Int = mutex.withLock {
+        val restored = store.restoreAll()
+        restored.forEach { game ->
+            games[game.code] = GameSession(
+                code = game.code,
+                initialState = game.state,
+                initialSequence = game.sequence,
+                initialSeats = game.seats,
+                journal = game.journal,
+                now = now,
+            )
+        }
+        restored.size
+    }
 
     suspend fun create(
         hostName: String,
@@ -39,16 +60,27 @@ class GameRegistry(
     ): HostedGame = mutex.withLock {
         val code = allocateCodeLocked()
         val playerId = PlayerId(newId())
+        // The seed is the only entropy in a game. Taking it from a
+        // cryptographic source stops anyone predicting the dice from having
+        // watched an earlier game.
+        val seed = random.nextLong()
         val session = GameSession(
             code = code,
             initialState = GameFactory.newLobby(
                 gameId = code,
                 host = Seat(playerId, hostName, hostToken),
                 rules = rules,
-                // The seed is the only entropy in a game. Taking it from a
-                // cryptographic source stops anyone predicting the dice from
-                // having watched an earlier game.
-                seed = random.nextLong(),
+                seed = seed,
+            ),
+            journal = store.open(
+                GameRecord.Opened(
+                    code = code,
+                    hostId = playerId,
+                    hostName = hostName,
+                    hostToken = hostToken,
+                    rules = rules,
+                    seed = seed,
+                ),
             ),
             now = now,
         )
@@ -63,8 +95,12 @@ class GameRegistry(
         games[code.uppercase()]
     }
 
+    /** Takes a game out of play for good, on disk as well as in memory. */
     suspend fun remove(code: String): GameSession? = mutex.withLock {
-        games.remove(code.uppercase())
+        val removed = games.remove(code.uppercase())
+        removed?.closeJournal()
+        store.discard(code)
+        removed
     }
 
     suspend fun activeGames(): List<GameSession> = mutex.withLock { games.values.toList() }

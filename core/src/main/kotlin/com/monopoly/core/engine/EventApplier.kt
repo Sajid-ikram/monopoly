@@ -39,6 +39,9 @@ fun GameState.applyEvent(event: GameEvent): GameState {
             if (remaining.isEmpty()) this
             else copy(
                 players = remaining,
+                // A lobby whose host walks out still needs somebody able to
+                // start it, so the next seat inherits the role.
+                host = if (host == event.player) remaining.first().id else host,
                 currentPlayerIndex = currentPlayerIndex.coerceAtMost(remaining.size - 1),
             )
         }
@@ -56,6 +59,38 @@ fun GameState.applyEvent(event: GameEvent): GameState {
                 phase = GamePhase.AwaitingRoll,
                 turn = TurnState(),
             )
+        }
+
+        is GameEvent.GameRestarted -> {
+            // Everyone is dealt back in, bankrupt players included, keeping
+            // their name and piece and nothing else. Built through the same
+            // factory as a first game so a rematch cannot differ from one.
+            val seats = players.map { Seat(it.id, it.name, it.token) }
+            // Totality: these are the factory's own preconditions, and they
+            // held when this game was built. Checking rather than trusting
+            // keeps a malformed event from throwing inside a client's replay.
+            if (seats.isEmpty() ||
+                seats.size > rules.maxPlayers ||
+                seats.map { it.token }.toSet().size != seats.size
+            ) {
+                this
+            } else {
+                val dealt = GameFactory.newGame(gameId, seats, rules, event.seed)
+                dealt.copy(
+                    // Whoever opened the game still runs it. The factory would
+                    // hand the role to the first seat, which after a shuffle is
+                    // whoever happened to go first last time.
+                    host = host,
+                    // Connection state belongs to the socket, not the game, so
+                    // it survives the reshuffle — a player who is away stays
+                    // away, and the turn timer keeps its place.
+                    players = dealt.players.map { fresh ->
+                        fresh.copy(
+                            connected = players.first { it.id == fresh.id }.connected,
+                        )
+                    },
+                )
+            }
         }
 
         is GameEvent.DiceRolled -> copy(

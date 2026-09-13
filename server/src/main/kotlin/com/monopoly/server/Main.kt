@@ -17,14 +17,23 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 
 fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: DEFAULT_PORT
+    // Somewhere to keep games between restarts. A relative default so it works
+    // out of the box; a container sets this to a mounted volume, because a
+    // directory inside the image is not durable and would quietly give you the
+    // behaviour this exists to remove.
+    val dataDirectory = Path.of(System.getenv("GAME_DATA_DIR") ?: DEFAULT_DATA_DIR)
+    val registry = GameRegistry(store = FileGameStore(dataDirectory))
+
     embeddedServer(Netty, port = port, host = "0.0.0.0") {
-        gameModule()
+        gameModule(registry)
     }.start(wait = true)
 }
 
@@ -55,7 +64,39 @@ fun Application.gameModule(registry: GameRegistry = GameRegistry()) {
         }
     }
 
+    // Before anything is served, so a player reconnecting the instant the
+    // server comes back finds their game rather than a "no such code".
+    runBlocking {
+        val restored = registry.restore()
+        if (restored > 0) log.info("Restored $restored game(s) from disk")
+    }
+
     startIdleGameSweeper(registry)
+    startAbsentPlayerTimer(registry)
+}
+
+/**
+ * Keeps a game moving when the player it is waiting for is not there.
+ *
+ * Runs on a short tick rather than a timer per game: one loop over a handful of
+ * games costs nothing, and it means an absent player's turn plays out a move at
+ * a time, at a pace the other players can actually follow.
+ */
+@OptIn(DelicateCoroutinesApi::class)
+private fun Application.startAbsentPlayerTimer(registry: GameRegistry) {
+    GlobalScope.launch {
+        while (isActive) {
+            delay(TURN_TICK)
+            try {
+                registry.activeGames().forEach { session ->
+                    session.playForAbsentPlayer(AWAY_GRACE.inWholeMilliseconds)
+                }
+            } catch (failure: Exception) {
+                // Never let one stuck game stop the timer for all the others.
+                log.warn("Absent-player tick failed", failure)
+            }
+        }
+    }
 }
 
 /**
@@ -87,8 +128,19 @@ private fun Application.startIdleGameSweeper(registry: GameRegistry) {
 }
 
 private const val DEFAULT_PORT = 8080
+private const val DEFAULT_DATA_DIR = "data/games"
 private const val MAX_FRAME_BYTES = 1L shl 20
 private val PING_PERIOD = 20.seconds
 private val PONG_TIMEOUT = 40.seconds
 private val SWEEP_INTERVAL = 5.minutes
 private val ABANDON_AFTER = 120.minutes
+
+/**
+ * How long a seat may be empty before the game plays on without it.
+ *
+ * Long enough that a tunnel, a lift or a change of network is never enough to
+ * lose your turn — the client is usually back within seconds — and short enough
+ * that a dead battery does not hold three other people hostage.
+ */
+private val AWAY_GRACE = 60.seconds
+private val TURN_TICK = 3.seconds

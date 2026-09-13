@@ -38,6 +38,8 @@ fun describe(event: GameEvent, before: GameState): String? {
         is GameEvent.GameStarted ->
             "Game on. Turn order: " + event.seatOrder.joinToString { name(it) } + "."
 
+        is GameEvent.GameRestarted -> "New game. Everyone back to GO."
+
         is GameEvent.DiceRolled -> {
             val doubles = if (event.roll.isDoubles) " — doubles!" else ""
             "${name(event.player)} rolled ${event.roll.first} + ${event.roll.second} " +

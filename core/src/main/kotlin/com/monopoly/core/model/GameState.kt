@@ -25,6 +25,15 @@ data class GameState(
     val rules: GameRules,
     /** Seat order. Bankrupt players stay in the list so history stays readable. */
     val players: List<Player>,
+    /**
+     * Who opened the game, and therefore who may start it or call a rematch.
+     *
+     * Held explicitly rather than taken as "the first seat", because starting
+     * the game shuffles [players] into turn order — after which the first seat
+     * is simply whoever won the draw. Null only for a state written before this
+     * existed, where the first seat was the best guess available.
+     */
+    val host: PlayerId? = null,
     val currentPlayerIndex: Int = 0,
     val phase: GamePhase = GamePhase.Lobby,
     /** Ownable spaces that have been bought, keyed by board index. */
@@ -48,6 +57,9 @@ data class GameState(
     val rng: Rng get() = Rng(rngState)
 
     val currentPlayer: Player get() = players[currentPlayerIndex]
+
+    /** The host, falling back to the first seat for a state that predates the field. */
+    val hostId: PlayerId? get() = host ?: players.firstOrNull()?.id
 
     val activePlayers: List<Player> get() = players.filter { it.isActive }
 

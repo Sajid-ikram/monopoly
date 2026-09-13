@@ -145,7 +145,7 @@ fun WaitingRoom(
                         Text(
                             when {
                                 game.controls(player.id) -> "you"
-                                seatIndex == 0 -> "host"
+                                player.id == state.hostId -> "host"
                                 else -> ""
                             },
                             style = MaterialTheme.typography.labelMedium,
@@ -173,8 +173,9 @@ fun WaitingRoom(
                     )
                 }
             } else {
+                val hostName = state.hostId?.let { state.playerOrNull(it)?.name } ?: "the host"
                 Text(
-                    "Waiting for ${state.players.firstOrNull()?.name ?: "the host"} to start.",
+                    "Waiting for $hostName to start.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth(),
                     textAlign = TextAlign.Center,

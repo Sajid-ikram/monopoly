@@ -40,10 +40,17 @@ object GameEngine {
 
         val actor = state.playerOrNull(command.actor)
             ?: return Outcome.Rejected(RejectionReason.UNKNOWN_PLAYER)
+
+        // Dealing again is the other exception, because the host may well be
+        // one of the players who went bankrupt. "You lost, so you may not start
+        // another game" is not a rule anyone plays by.
+        if (command is Command.Rematch) return rematch(state, command)
+
         if (actor.bankrupt) return Outcome.Rejected(RejectionReason.PLAYER_BANKRUPT)
 
         return when (command) {
             is Command.JoinGame -> error("Handled above")
+            is Command.Rematch -> error("Handled above")
             is Command.LeaveLobby -> leaveLobby(state, command)
             is Command.SetRules -> setRules(state, command)
             is Command.ChangeToken -> changeToken(state, command)
@@ -108,8 +115,8 @@ object GameEngine {
         if (state.phase != GamePhase.Lobby) {
             return Outcome.Rejected(RejectionReason.WRONG_PHASE, "Leaving mid-game is a disconnect")
         }
-        // The host holds seat zero, so when they leave the next player inherits
-        // it. An empty game has no representation, so the last seat cannot go.
+        // If the host leaves, the next seat inherits the role. An empty game has
+        // no representation, so the last seat cannot go.
         if (state.players.size <= 1) {
             return Outcome.Rejected(RejectionReason.LAST_PLAYER_CANNOT_LEAVE)
         }
@@ -121,7 +128,7 @@ object GameEngine {
 
     private fun setRules(state: GameState, command: Command.SetRules): Outcome {
         if (state.phase != GamePhase.Lobby) return Outcome.Rejected(RejectionReason.WRONG_PHASE)
-        if (state.players.first().id != command.actor) {
+        if (state.hostId != command.actor) {
             return Outcome.Rejected(RejectionReason.NOT_HOST)
         }
         if (state.players.size > command.rules.maxPlayers) {
@@ -168,8 +175,7 @@ object GameEngine {
         if (state.phase != GamePhase.Lobby) {
             return Outcome.Rejected(RejectionReason.WRONG_PHASE)
         }
-        // The host holds the first seat, and only the host may start.
-        if (state.players.first().id != command.actor) {
+        if (state.hostId != command.actor) {
             return Outcome.Rejected(RejectionReason.NOT_HOST)
         }
         if (state.players.size < state.rules.minPlayers) {
@@ -184,6 +190,27 @@ object GameEngine {
         val (rng, order) = shuffle(state.rng, state.players.map { it.id })
         val tx = Transaction(state)
         tx.emit(GameEvent.GameStarted(order, rng.state))
+        return tx.accept()
+    }
+
+    /**
+     * Deals again with the same people, back to the lobby.
+     *
+     * The new seed is drawn from the finished game's generator rather than a
+     * clock, so a rematch is as reproducible as the game before it: replay the
+     * whole log and you get both games back, not just the first.
+     */
+    private fun rematch(state: GameState, command: Command.Rematch): Outcome {
+        if (state.phase !is GamePhase.GameOver) {
+            return Outcome.Rejected(RejectionReason.WRONG_PHASE)
+        }
+        if (state.hostId != command.actor) {
+            return Outcome.Rejected(RejectionReason.NOT_HOST)
+        }
+
+        val (_, seed) = state.rng.nextLong()
+        val tx = Transaction(state)
+        tx.emit(GameEvent.GameRestarted(seed))
         return tx.accept()
     }
 

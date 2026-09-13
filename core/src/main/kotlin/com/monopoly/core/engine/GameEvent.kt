@@ -68,6 +68,18 @@ sealed interface GameEvent {
     @Serializable
     data class GameStarted(val seatOrder: List<PlayerId>, val rngState: Long) : GameEvent
 
+    /**
+     * The table is cleared and everyone is dealt back in, back in the lobby.
+     *
+     * Carries [seed] rather than the resulting state, because an event that
+     * carried a whole state would be the one place a client took the server's
+     * word for the board instead of deriving it. Everything else the rebuild
+     * needs — who is playing, their names and pieces — is already in the state
+     * this applies to.
+     */
+    @Serializable
+    data class GameRestarted(val seed: Long) : GameEvent
+
     @Serializable
     data class DiceRolled(
         val player: PlayerId,

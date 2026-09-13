@@ -14,3 +14,7 @@ local.properties
 /.idea/*
 !/.idea/codeStyles/
 !/.idea/inspectionProfiles/
+
+# Saved games. These hold resume tokens, which are bearer credentials for a
+# seat — committing one would hand someone else your game.
+/data/

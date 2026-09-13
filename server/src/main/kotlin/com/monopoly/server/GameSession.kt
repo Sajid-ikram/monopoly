@@ -28,12 +28,15 @@ import kotlinx.coroutines.sync.withLock
 class GameSession(
     val code: String,
     initialState: GameState,
+    initialSequence: Long = 0,
+    initialSeats: Map<PlayerId, String> = emptyMap(),
+    private val journal: GameJournal = GameJournal.None,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val mutex = Mutex()
 
     private var state: GameState = initialState
-    private var sequence: Long = 0
+    private var sequence: Long = initialSequence
 
     /** The full event history, which is what lets a client replay a gap. */
     private val log = ArrayList<SequencedEvent>()
@@ -60,7 +63,21 @@ class GameSession(
     private class Member(
         val resumeToken: String,
         var connection: ClientChannel? = null,
+        /**
+         * When this seat was last left empty, or null while somebody is in it.
+         *
+         * This is what the turn timer measures. It belongs to the seat rather
+         * than the game because each player's absence is their own: two people
+         * dropping a minute apart are not equally overdue.
+         */
+        var awaySince: Long? = null,
     )
+
+    init {
+        initialSeats.forEach { (player, token) ->
+            members[player] = Member(token, awaySince = now())
+        }
+    }
 
     // ------------------------------------------------------------------ reading
 
@@ -92,7 +109,8 @@ class GameSession(
 
     /** Registers a seat that the engine has already accepted, issuing its token. */
     suspend fun enrol(playerId: PlayerId, resumeToken: String) = mutex.withLock {
-        members[playerId] = Member(resumeToken)
+        members[playerId] = Member(resumeToken, awaySince = now())
+        journal.append(GameRecord.SeatTaken(playerId, resumeToken))
     }
 
     /** Looks up the seat a resume token belongs to. */
@@ -112,6 +130,7 @@ class GameSession(
         val member = members[playerId] ?: return@withLock false
         member.connection?.close()
         member.connection = channel
+        member.awaySince = null
         emptySince = null
         true
     }
@@ -123,13 +142,20 @@ class GameSession(
         // knock the player's new connection offline.
         if (member.connection !== channel) return@withLock
         member.connection = null
+        member.awaySince = now()
         channel.close()
         if (members.values.none { it.connection != null }) emptySince = now()
     }
 
     suspend fun forget(playerId: PlayerId) = mutex.withLock {
         members.remove(playerId)?.connection?.close()
+        journal.append(GameRecord.SeatReleased(playerId))
         if (members.values.none { it.connection != null }) emptySince = now()
+    }
+
+    /** Closes the file this game is written to. Called when it is torn down. */
+    fun closeJournal() {
+        journal.close()
     }
 
     // ----------------------------------------------------------------- commands
@@ -196,6 +222,114 @@ class GameSession(
         broadcastLocked(ServerMessage.Events(appended.first().sequence, appended))
     }
 
+    // ------------------------------------------------------------ absent player
+
+    /**
+     * Plays one move for whoever the game is waiting on, if they are not there.
+     *
+     * A seat that is empty when its turn comes around would otherwise stop the
+     * game for everybody, with nothing anyone can do about it — the failure
+     * this whole design is meant to rule out, arriving by a different door.
+     *
+     * Only a *disconnected* player is ever played for. Somebody who is looking
+     * at the board and thinking is not holding the game up in a way software
+     * should fix, and taking their turn from under them would be worse than
+     * waiting. That makes the rule easy to state: the game only moves on when
+     * there is nobody there to move it.
+     *
+     * One move per call, so an absent player's turn plays out at a readable
+     * pace rather than resolving in a single jump nobody can follow.
+     *
+     * @return true when a move was played.
+     */
+    suspend fun playForAbsentPlayer(graceMillis: Long): Boolean = mutex.withLock {
+        val waiting = waitingOn(state) ?: return@withLock false
+        val member = members[waiting] ?: return@withLock false
+        if (member.connection != null) return@withLock false
+
+        val since = member.awaySince ?: return@withLock false
+        if (now() - since < graceMillis) return@withLock false
+
+        val command = standInMove(state, waiting) ?: return@withLock false
+        val outcome = GameEngine.reduce(state, command)
+        if (outcome !is Outcome.Accepted) return@withLock false
+
+        val appended = appendLocked(outcome.events)
+        state = outcome.state
+        broadcastLocked(ServerMessage.Events(appended.first().sequence, appended))
+        true
+    }
+
+    /** Whose input the game is currently blocked on, if anyone's. */
+    private fun waitingOn(state: GameState): PlayerId? = when (val phase = state.phase) {
+        is GamePhase.Lobby, is GamePhase.GameOver -> null
+
+        is GamePhase.AwaitingRoll,
+        is GamePhase.AwaitingJailDecision,
+        is GamePhase.AwaitingPurchase,
+        is GamePhase.AwaitingTurnEnd,
+        -> state.players.getOrNull(state.currentPlayerIndex)?.id
+
+        is GamePhase.Auction -> phase.currentBidder
+        is GamePhase.AwaitingDebtSettlement -> phase.debtor
+        is GamePhase.AwaitingTradeResponse -> phase.offer.to
+    }
+
+    /**
+     * The move to make on an absent player's behalf.
+     *
+     * Every one of these is the choice that costs them least: it keeps their
+     * money, gives away nothing, and commits them to nothing they might have
+     * refused. Declining a property rather than buying it, folding rather than
+     * bidding, refusing a trade rather than accepting one — an absent player
+     * should come back to a game that moved on without them, not to one that
+     * spent their money on their behalf.
+     */
+    private fun standInMove(state: GameState, player: PlayerId): Command? =
+        when (val phase = state.phase) {
+            is GamePhase.Lobby, is GamePhase.GameOver -> null
+
+            // Rolling is compulsory and has no downside; there is no version of
+            // this turn where they would rather not have rolled.
+            is GamePhase.AwaitingRoll, is GamePhase.AwaitingJailDecision ->
+                Command.RollDice(player)
+
+            is GamePhase.AwaitingPurchase -> Command.DeclineProperty(player)
+            is GamePhase.Auction -> Command.WithdrawFromAuction(player)
+            is GamePhase.AwaitingTurnEnd -> Command.EndTurn(player)
+            is GamePhase.AwaitingTradeResponse -> Command.RejectTrade(player)
+            is GamePhase.AwaitingDebtSettlement -> raiseOrFold(state, phase, player)
+        }
+
+    /**
+     * A debt is the one place standing in cannot be free.
+     *
+     * The game cannot continue until it is settled, so somebody has to choose
+     * what to give up. The order is the same one a player would use: cash
+     * first, then buildings, then mortgages, and bankruptcy only once there is
+     * genuinely nothing left — which is also the only point at which the engine
+     * will accept it.
+     */
+    private fun raiseOrFold(
+        state: GameState,
+        phase: GamePhase.AwaitingDebtSettlement,
+        player: PlayerId,
+    ): Command? {
+        val debtor = state.playerOrNull(player) ?: return null
+        if (debtor.money >= phase.amount) return Command.SettleDebt(player)
+
+        val deeds = state.deedsOf(player)
+        // The most-developed street first: selling down from the top is the
+        // only order that keeps a group evenly built at every step.
+        deeds.filter { it.houses > 0 }.maxByOrNull { it.houses }?.let {
+            return Command.SellHouse(player, it.spaceIndex)
+        }
+        deeds.firstOrNull { !it.mortgaged }?.let {
+            return Command.MortgageProperty(player, it.spaceIndex)
+        }
+        return Command.DeclareBankruptcy(player)
+    }
+
     // --------------------------------------------------------------- recovering
 
     /**
@@ -241,6 +375,9 @@ class GameSession(
     /** Must be called with [mutex] held. */
     private fun appendLocked(events: List<GameEvent>): List<SequencedEvent> {
         val appended = events.map { event -> SequencedEvent(++sequence, event) }
+        // Written before it is broadcast, so there is no window in which a
+        // player has seen something the server would forget on a restart.
+        appended.forEach { journal.append(GameRecord.Happened(it)) }
         log += appended
         // Keep memory bounded on a long game. Anyone who falls behind the
         // retained window is served a snapshot instead, so nothing is lost.

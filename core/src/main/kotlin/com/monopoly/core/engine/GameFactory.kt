@@ -56,6 +56,10 @@ object GameFactory {
         return GameState(
             gameId = gameId,
             rules = rules,
+            // The first seat is the one that opened the game. Recorded now,
+            // because starting the game shuffles the seats and the answer
+            // stops being derivable.
+            host = seats.first().id,
             players = seats.map { seat ->
                 Player(
                     id = seat.id,

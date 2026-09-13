@@ -134,6 +134,17 @@ sealed interface Command {
 
     @Serializable
     data class EndTurn(override val actor: PlayerId) : Command
+
+    /**
+     * Host-only, once the game is over: deal again with the same people.
+     *
+     * Deliberately a command on the existing game rather than a new game, so
+     * the code everyone joined with still works and nobody has to be told a new
+     * one. Bankrupt players come back — being knocked out of the last game is
+     * not a reason to be excluded from the next.
+     */
+    @Serializable
+    data class Rematch(override val actor: PlayerId) : Command
 }
 
 /** Why a command was refused. Surfaced to the player, so keep these specific. */
